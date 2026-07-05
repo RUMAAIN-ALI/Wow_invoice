@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Appbar, Text } from 'react-native-paper';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -8,6 +8,8 @@ import { RootStackParamList } from '../navigation/types';
 import { getCustomerById, createCustomer, updateCustomer } from '../services/customerService';
 import { getSession } from '../services/businessService';
 import { COLORS } from '../constants';
+import { KeyboardAwareScreen } from '../components/keyboard/KeyboardAwareScreen';
+import { StickyBottomActionBar } from '../components/keyboard/StickyBottomActionBar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'CustomerEdit'>;
@@ -84,7 +86,7 @@ export function CustomerEditScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScreen edges={[]} style={styles.scroll} contentContainerStyle={styles.content}>
           <Field label="Name" required>
             <TextInput style={styles.input} value={name} onChangeText={setName}
               placeholder="Customer name" placeholderTextColor={COLORS.textMuted} />
@@ -120,7 +122,11 @@ export function CustomerEditScreen() {
               </Field>
             </View>
           </View>
-
+          <View style={{ height: 72 }} />
+        </KeyboardAwareScreen>
+      )}
+      {!loading && (
+        <StickyBottomActionBar style={styles.stickyBar}>
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.6 }]}
             onPress={handleSave}
@@ -129,7 +135,7 @@ export function CustomerEditScreen() {
           >
             <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Customer'}</Text>
           </TouchableOpacity>
-        </ScrollView>
+        </StickyBottomActionBar>
       )}
     </SafeAreaView>
   );
@@ -165,8 +171,14 @@ const styles = StyleSheet.create({
   },
   inputMulti: { minHeight: 64, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
+  stickyBar: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
   saveBtn: {
-    marginTop: 8,
     backgroundColor: COLORS.primary,
     borderRadius: 14,
     paddingVertical: 15,

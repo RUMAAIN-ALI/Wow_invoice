@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Share, Alert, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Appbar, Surface } from 'react-native-paper';
@@ -10,6 +10,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { HtmlPreview } from '../components/HtmlPreview';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
 import { RootStackParamList } from '../navigation/types';
 import { DocRecord, BusinessSettings } from '../types';
 import { getRecordById, deleteRecord } from '../services/invoiceService';
@@ -20,6 +21,9 @@ import { getAiTemplateHtmlById } from '../services/templateService';
 import { getActivePrintProfile } from '../services/printProfileService';
 import { renderInvoice, RenderInput } from '../templates';
 import { COLORS } from '../constants';
+import { getShareFormat } from '../services/appPreferencesService';
+import { HtmlSnapshotCapture } from '../utils/htmlSnapshot';
+import { formatFileName } from '../services/formatService';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'PreviewRecord'>;
@@ -40,6 +44,7 @@ export function PreviewRecordScreen() {
   const [aiHtml,       setAiHtml]       = useState<string | null>(null);
   const [templateType, setTemplateType] = useState<'transaction_document' | 'record_form'>('transaction_document');
   const [loading,      setLoading]      = useState(true);
+  const [capturingImage, setCapturingImage] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,31 +116,39 @@ export function PreviewRecordScreen() {
     return renderInvoice(templateId, input, aiHtml);
   };
 
-  const handlePdf = async () => {
+  const shareableFile = async (srcUri: string, ext: string): Promise<File> => {
+    const fileName = formatFileName(docName, record!.number, data['Customer Name'], record!.createdAt, ext);
+    const dest = new File(Paths.cache, fileName);
+    if (dest.exists) dest.delete();
+    await new File(srcUri).copy(dest);
+    return dest;
+  };
+
+  const sharePdf = async () => {
     if (!record || !business) return;
     try {
       const { uri } = await Print.printToFileAsync({ html: getHtml() });
-      await Sharing.shareAsync(uri, { mimeType: 'application/pdf' });
+      const dest = await shareableFile(uri, 'pdf');
+      await Sharing.shareAsync(dest.uri, { mimeType: 'application/pdf' });
     } catch {
       Alert.alert('Error', 'Could not generate PDF.');
     }
   };
 
+  const handlePdf = sharePdf;
+
+  const shareImage = () => setCapturingImage(true);
+
   const handleShare = async () => {
     if (!record || !business) return;
-    let text = `${business.name}\n${docName}: ${record.number}\n\n`;
-    for (const [key, val] of Object.entries(data)) {
-      if (!val && val !== 0) continue;
-      if (Array.isArray(val)) {
-        text += `${key}:\n`;
-        for (const row of val.filter((r: any) => r.name)) {
-          text += `  ${row.name} x${row.qty} = ₹${(Number(row.qty) * Number(row.price)).toLocaleString('en-IN')}\n`;
-        }
-      } else {
-        text += `${key}: ${val}\n`;
-      }
-    }
-    await Share.share({ message: text });
+    const format = await getShareFormat();
+    if (format === 'pdf') { await sharePdf(); return; }
+    if (format === 'image') { shareImage(); return; }
+    Alert.alert('Share as', undefined, [
+      { text: 'PDF', onPress: sharePdf },
+      { text: 'Image', onPress: shareImage },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handlePrint = async () => {
@@ -215,6 +228,24 @@ export function PreviewRecordScreen() {
           <Text style={styles.actionLabel}>Print</Text>
         </TouchableOpacity>
       </Surface>
+      {capturingImage && (
+        <HtmlSnapshotCapture
+          html={getHtml()}
+          onCaptured={async (uri) => {
+            setCapturingImage(false);
+            try {
+              const dest = await shareableFile(uri, 'png');
+              await Sharing.shareAsync(dest.uri, { mimeType: 'image/png' });
+            } catch {
+              Alert.alert('Error', 'Could not share image.');
+            }
+          }}
+          onError={() => {
+            setCapturingImage(false);
+            Alert.alert('Error', 'Could not generate image.');
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

@@ -29,6 +29,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -281,16 +282,30 @@ function SectionHeader({ icon, title, subtitle }: { icon: string; title: string;
   );
 }
 
+// ─── Group Card ─────────────────────────────────────────────────────────────
+// Wraps a labeled group of controls in a soft card, replacing flat dividers
+// so related settings read as one visual unit instead of a dense list.
+
+function GroupCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={s.groupCard}>
+      <Text style={s.groupLabel}>{label}</Text>
+      {children}
+    </View>
+  );
+}
+
 // ─── Toggle Row ─────────────────────────────────────────────────────────────
 
-function ToggleRow({ label, description, value, onChange }: {
+function ToggleRow({ label, description, value, onChange, last }: {
   label: string;
   description?: string;
   value: boolean;
   onChange: (v: boolean) => void;
+  last?: boolean;
 }) {
   return (
-    <View style={s.toggleRow}>
+    <View style={[s.toggleRow, last && { borderBottomWidth: 0 }]}>
       <View style={{ flex: 1, marginRight: T.sp16 }}>
         <Text style={s.toggleLabel}>{label}</Text>
         {description ? <Text style={s.toggleDesc}>{description}</Text> : null}
@@ -336,6 +351,14 @@ export function StyleStudioScreen() {
   const snapPoints   = [SNAP_PEEK, SNAP_DEFAULT, SNAP_FULL];
 
   const sheetH = useSharedValue(SNAP_DEFAULT);
+  const [snapIndex, setSnapIndex] = useState(1); // 0=Peek, 1=Default, 2=Full
+
+  const snapTo = useCallback((idx: number) => {
+    const clamped = Math.max(0, Math.min(2, idx));
+    sheetH.value = withSpring(snapPoints[clamped], { damping: 22, stiffness: 220, mass: 0.8 });
+    setSnapIndex(clamped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenH]);
 
   // ── Gesture ──
   let gestureStartH = 0;
@@ -362,6 +385,7 @@ export function StyleStudioScreen() {
         nearest = snapPoints[Math.max(0, idx - 1)];
       }
       sheetH.value = withSpring(nearest, { damping: 22, stiffness: 220, mass: 0.8 });
+      runOnJS(setSnapIndex)(snapPoints.indexOf(nearest));
     });
 
   const sheetStyle   = useAnimatedStyle(() => ({ height: sheetH.value }));
@@ -522,50 +546,58 @@ export function StyleStudioScreen() {
         {/* ── Bottom Sheet ── */}
         <Animated.View style={[s.sheet, sheetStyle]}>
 
-          {/* Drag zone — scoped to the handle only, so it doesn't fight the tab ScrollView's own gesture */}
+          {/* Drag zone — scoped to the handle only, so it doesn't fight the tab bar's touches */}
           <View style={s.sheetHeader}>
-            <GestureDetector gesture={panGesture}>
-              <View style={s.handleZone}>
-                <View style={s.handle} />
-              </View>
-            </GestureDetector>
+            <View style={s.handleRow}>
+              <GestureDetector gesture={panGesture}>
+                <View style={s.handleZone}>
+                  <View style={s.handle} />
+                </View>
+              </GestureDetector>
+              <TouchableOpacity
+                style={s.expandBtn}
+                onPress={() => snapTo(snapIndex === 2 ? 1 : 2)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={snapIndex === 2 ? 'Collapse panel' : 'Expand panel'}
+              >
+                <Ionicons name={snapIndex === 2 ? 'contract-outline' : 'expand-outline'} size={16} color={T.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-            {/* Tab bar */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.tabBar}
-              bounces={false}
-            >
+            {/* Segmented tab bar */}
+            <View style={s.tabTrack}>
               {TABS.map(tab => {
                 const active = activeTab === tab.key;
                 return (
                   <TouchableOpacity
                     key={tab.key}
-                    style={[s.tab, active && s.tabActive]}
+                    style={[s.tabSeg, active && s.tabSegActive]}
                     onPress={() => setActiveTab(tab.key)}
                     activeOpacity={0.7}
                   >
                     <Ionicons
                       name={tab.icon as any}
                       size={16}
-                      color={active ? T.surface : T.textSecondary}
+                      color={active ? T.accent : T.textSecondary}
                     />
-                    <Text style={[s.tabLabel, { color: active ? T.surface : T.textSecondary }]}>
-                      {tab.label}
-                    </Text>
+                    {active && (
+                      <Text style={s.tabSegLabelActive} numberOfLines={1}>
+                        {tab.label}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </View>
           </View>
 
           {/* Scrollable content */}
-          <ScrollView
+          <KeyboardAwareScrollView
             style={s.sheetContent}
             contentContainerStyle={s.sheetContentPad}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            bottomOffset={24}
           >
 
             {/* ── PRESETS tab ── */}
@@ -667,26 +699,31 @@ export function StyleStudioScreen() {
                 />
 
                 {/* Accent colors */}
-                <Text style={s.groupLabel}>Brand Color</Text>
+                <GroupCard label="Brand Color">
                 <View style={s.colorRow}>
-                  {ACCENT_COLORS.map(c => (
-                    <TouchableOpacity
-                      key={c.hex}
-                      style={[s.colorSwatch, { backgroundColor: c.hex }, currentAccent === c.hex && s.colorSwatchActive]}
-                      onPress={() => patchStyle({ accentColor: c.hex })}
-                      activeOpacity={0.8}
-                    >
-                      {currentAccent === c.hex && (
-                        <Ionicons name="checkmark" size={14} color="#fff" />
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                  {ACCENT_COLORS.map(c => {
+                    const active = currentAccent === c.hex;
+                    return (
+                      <TouchableOpacity
+                        key={c.hex}
+                        style={s.colorItem}
+                        onPress={() => patchStyle({ accentColor: c.hex })}
+                        activeOpacity={0.8}
+                      >
+                        <View style={[s.colorSwatch, { backgroundColor: c.hex }, active && s.colorSwatchActive]}>
+                          {active && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </View>
+                        <Text style={[s.colorName, active && { color: T.textPrimary, fontWeight: '700' }]} numberOfLines={1}>
+                          {c.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-
-                <View style={s.divider} />
+                </GroupCard>
 
                 {/* Fonts */}
-                <Text style={s.groupLabel}>Font</Text>
+                <GroupCard label="Font">
                 <View style={s.fontRow}>
                   {FONTS.map(f => {
                     const active = (theme as any).style?.fontFamily === f.value;
@@ -705,11 +742,10 @@ export function StyleStudioScreen() {
                     );
                   })}
                 </View>
-
-                <View style={s.divider} />
+                </GroupCard>
 
                 {/* Density */}
-                <Text style={s.groupLabel}>Layout Density</Text>
+                <GroupCard label="Layout Density">
                 <View style={s.segmentRow}>
                   {(['compact', 'comfortable', 'spacious'] as const).map(d => {
                     const active = (theme as any).style?.density === d;
@@ -726,6 +762,7 @@ export function StyleStudioScreen() {
                     );
                   })}
                 </View>
+                </GroupCard>
               </View>
             )}
 
@@ -738,7 +775,7 @@ export function StyleStudioScreen() {
                   subtitle="Columns and table appearance"
                 />
 
-                <Text style={s.groupLabel}>Table Style</Text>
+                <GroupCard label="Table Style">
                 <View style={s.segmentRow}>
                   {TABLE_STYLES.map(ts => {
                     const active = (theme as any).table?.style === ts.value;
@@ -755,10 +792,9 @@ export function StyleStudioScreen() {
                     );
                   })}
                 </View>
+                </GroupCard>
 
-                <View style={s.divider} />
-
-                <Text style={s.groupLabel}>Columns</Text>
+                <GroupCard label="Columns">
                 <ToggleRow
                   label="HSN Code"
                   description="Show Harmonized System Number for each item"
@@ -782,7 +818,9 @@ export function StyleStudioScreen() {
                   description="Show discount column when applicable"
                   value={preferences.showDiscount}
                   onChange={v => patchPref('showDiscount', v)}
+                  last
                 />
+                </GroupCard>
               </View>
             )}
 
@@ -795,7 +833,7 @@ export function StyleStudioScreen() {
                   subtitle="Control what appears on the invoice"
                 />
 
-                <Text style={s.groupLabel}>Header</Text>
+                <GroupCard label="Header">
                 <ToggleRow
                   label="Business Logo"
                   description="Show logo in the invoice header"
@@ -803,8 +841,8 @@ export function StyleStudioScreen() {
                   onChange={v => patchPref('showLogo', v)}
                 />
                 {preferences.showLogo && (
-                  <View style={{ marginBottom: T.sp12 }}>
-                    <Text style={[s.groupLabel, { marginTop: 0 }]}>Logo Position</Text>
+                  <View style={s.nestedControl}>
+                    <Text style={s.nestedLabel}>Logo Position</Text>
                     <View style={s.segmentRow}>
                       {LOGO_POSITIONS.map(p => {
                         const active = preferences.logoPosition === p.value;
@@ -848,11 +886,11 @@ export function StyleStudioScreen() {
                   label="Email"
                   value={preferences.showEmail}
                   onChange={v => patchPref('showEmail', v)}
+                  last
                 />
+                </GroupCard>
 
-                <View style={s.divider} />
-
-                <Text style={s.groupLabel}>Footer</Text>
+                <GroupCard label="Footer">
                 <ToggleRow
                   label="Payment Section"
                   value={preferences.showPaymentSection}
@@ -872,11 +910,13 @@ export function StyleStudioScreen() {
                   label="Signature"
                   value={preferences.showSignature}
                   onChange={v => patchPref('showSignature', v)}
+                  last
                 />
+                </GroupCard>
               </View>
             )}
 
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </Animated.View>
 
       </SafeAreaView>
@@ -988,7 +1028,12 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: T.border,
   },
+  handleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   handleZone: {
+    flex: 1,
     paddingVertical: T.sp12,
   },
   handle: {
@@ -998,33 +1043,43 @@ const s = StyleSheet.create({
     borderRadius: T.r99,
     alignSelf: 'center',
   },
-
-  // Tab bar
-  tabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: T.sp16,
-    paddingBottom: T.sp12,
-    gap: T.sp8,
-  },
-  tab: {
-    height: 40,
+  expandBtn: {
+    width: 32,
+    height: 32,
     borderRadius: T.r10,
-    paddingHorizontal: T.sp16,
+    backgroundColor: T.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: T.sp16,
+  },
+
+  // Segmented tab bar
+  tabTrack: {
+    flexDirection: 'row',
+    marginHorizontal: T.sp16,
+    marginBottom: T.sp12,
+    backgroundColor: T.bg,
+    borderRadius: T.r12,
+    padding: 3,
+    gap: 2,
+  },
+  tabSeg: {
+    flex: 1,
+    height: 38,
+    borderRadius: T.r10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: T.sp8,
-    backgroundColor: T.bg,
-    borderWidth: 1,
-    borderColor: T.border,
+    gap: 6,
   },
-  tabActive: {
-    backgroundColor: T.accent,
-    borderColor: T.accent,
+  tabSegActive: {
+    backgroundColor: T.surface,
+    ...cardShadow('#0F172A', 1, 0.08, 3, { elevation: 2 }),
   },
-  tabLabel: {
-    fontSize: T.fs14,
-    fontWeight: '600',
+  tabSegLabelActive: {
+    fontSize: T.fs13,
+    fontWeight: '700',
+    color: T.accent,
   },
 
   // Sheet content
@@ -1109,15 +1164,29 @@ const s = StyleSheet.create({
   },
   aiResultText: { fontSize: T.fs13, color: T.textSecondary, lineHeight: 18 },
 
-  // Group label
+  // Group card — wraps a labeled set of controls so related settings read as
+  // one visual unit instead of a flat, divider-separated list.
+  groupCard: {
+    backgroundColor: T.bg,
+    borderRadius: T.r14,
+    padding: T.sp16,
+    marginBottom: T.sp16,
+  },
   groupLabel: {
-    fontSize: T.fs11,
+    fontSize: T.fs13,
     fontWeight: '700',
-    color: T.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    color: T.textPrimary,
+    marginBottom: T.sp8,
+  },
+  nestedControl: {
     marginBottom: T.sp12,
-    marginTop: T.sp4,
+    marginTop: -T.sp4,
+  },
+  nestedLabel: {
+    fontSize: T.fs11,
+    fontWeight: '600',
+    color: T.textSecondary,
+    marginBottom: T.sp8,
   },
 
   // Preset grid
@@ -1186,29 +1255,34 @@ const s = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Appearance
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: T.border,
-    marginVertical: T.sp20,
-  },
   colorRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: T.sp8,
+    gap: T.sp12,
     marginBottom: T.sp4,
   },
+  colorItem: {
+    width: '22%',
+    alignItems: 'center',
+  },
   colorSwatch: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     borderRadius: T.r99,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    marginBottom: T.sp4,
   },
   colorSwatchActive: {
-    borderWidth: 3,
-    borderColor: T.surface,
-    ...cardShadow(T.textPrimary, 0, 0.4, 4, { elevation: 4 }),
+    borderColor: T.textPrimary,
+    ...cardShadow(T.textPrimary, 0, 0.25, 4, { elevation: 3 }),
+  },
+  colorName: {
+    fontSize: 10,
+    color: T.textSecondary,
+    textAlign: 'center',
   },
   fontRow: {
     flexDirection: 'row',
@@ -1221,7 +1295,7 @@ const s = StyleSheet.create({
     borderRadius: T.r12,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor: T.bg,
+    backgroundColor: T.surface,
     paddingVertical: T.sp12,
     paddingHorizontal: T.sp8,
     alignItems: 'center',
@@ -1245,7 +1319,7 @@ const s = StyleSheet.create({
   // Segment control
   segmentRow: {
     flexDirection: 'row',
-    backgroundColor: T.bg,
+    backgroundColor: T.surface,
     borderRadius: T.r12,
     borderWidth: 1,
     borderColor: T.border,

@@ -10,16 +10,13 @@ import { Customer } from '../types';
 import { getCustomerById } from '../services/customerService';
 import { getInvoicesByCustomer, getOutstandingByCustomer, GlobalSearchInvoice } from '../services/invoiceService';
 import { COLORS } from '../constants';
+import { formatCurrencyFromPaise, formatDate as fmtDate } from '../services/formatService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'CustomerHistory'>;
 
 function fmtMoney(paise: number): string {
-  return '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatCurrencyFromPaise(paise);
 }
 
 export function CustomerHistoryScreen() {

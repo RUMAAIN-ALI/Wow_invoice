@@ -19,6 +19,7 @@ import { computeStaticSignature } from '../services/templateValidator';
 import { migrateAiDesignIfNeeded } from '../services/templateMigration';
 import { PhotoDebugModal } from '../components/PhotoDebugModal';
 import { COLORS, TEMPLATES_BY_DOCUMENT_TYPE } from '../constants';
+import { KeyboardAwareScreen } from '../components/keyboard/KeyboardAwareScreen';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'TemplatePicker'>;
@@ -373,7 +374,7 @@ export function TemplatePickerScreen() {
         <Appbar.Content title="Invoice Template" titleStyle={styles.appbarTitle} />
       </Appbar.Header>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScreen edges={[]} style={styles.scroll}>
         {/* Built-in */}
         <Text style={styles.sectionTitle}>Built-in Designs</Text>
         <ScrollView
@@ -486,7 +487,7 @@ export function TemplatePickerScreen() {
         </View>
 
         <View style={{ height: 48 }} />
-      </ScrollView>
+      </KeyboardAwareScreen>
 
       <PhotoDebugModal
         visible={photoDebug !== null}

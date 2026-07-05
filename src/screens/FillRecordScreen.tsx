@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, Switch, Modal,
+  ScrollView, Alert, Switch, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Appbar, Surface } from 'react-native-paper';
@@ -17,6 +17,11 @@ import { COLORS, getLocalFieldSuggestions, detectTemplateType } from '../constan
 import { Button } from '../components/Button';
 import { CustomerAutocompleteField } from '../components/CustomerAutocompleteField';
 import { Customer } from '../types';
+import { formatCurrency, formatPercent, formatDate, formatDateIso } from '../services/formatService';
+import { CalendarPickerModal } from '../components/CalendarPickerModal';
+import { fieldKeyboardProps } from '../components/keyboard/fieldKeyboard';
+import { KeyboardAwareScreen } from '../components/keyboard/KeyboardAwareScreen';
+import { StickyBottomActionBar } from '../components/keyboard/StickyBottomActionBar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'FillRecord'>;
@@ -121,6 +126,7 @@ export function FillRecordScreen() {
   const [stateModal,     setStateModal]    = useState(false);
   const [loading,        setLoading]       = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [datePickerFieldId, setDatePickerFieldId] = useState<string | null>(null);
 
   const isGst = isGstDocName(documentTypeName);
 
@@ -338,7 +344,7 @@ export function FillRecordScreen() {
                     <View style={[styles.itemNumField, { flex: 1.2 }]}>
                       <Text style={styles.itemNumLabel}>{pct > 0 ? 'TOTAL' : 'AMOUNT'}</Text>
                       <Text style={[styles.itemAmountText, { color: COLORS.success }]}>
-                        ₹{amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatCurrency(amount)}
                       </Text>
                     </View>
                   </>
@@ -399,8 +405,8 @@ export function FillRecordScreen() {
                   </View>
                   {pct > 0 && showAmt && (
                     <Text style={styles.gstBreakdown}>
-                      Taxable: ₹{taxable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      {'  '}+{'  '}GST @{pct}%: ₹{(amount - taxable).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      Taxable: {formatCurrency(taxable)}
+                      {'  '}+{'  '}GST @{formatPercent(pct)}: {formatCurrency(amount - taxable)}
                     </Text>
                   )}
                 </View>
@@ -442,11 +448,29 @@ export function FillRecordScreen() {
               style={[styles.input, styles.currencyInput]}
               value={String(values[field.id] ?? '')}
               onChangeText={v => setValue(field.id, v)}
-              keyboardType="numeric"
+              {...fieldKeyboardProps('decimal')}
               placeholder="0.00"
               placeholderTextColor={COLORS.textMuted}
             />
           </View>
+        </View>
+      );
+    }
+
+    if (field.type === 'date') {
+      const raw = values[field.id];
+      return (
+        <View key={field.id} style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>{field.name}{field.required ? ' *' : ''}</Text>
+          <TouchableOpacity
+            style={styles.input}
+            onPress={() => setDatePickerFieldId(field.id)}
+            activeOpacity={0.7}
+          >
+            <Text style={raw ? undefined : { color: COLORS.textMuted }}>
+              {raw ? formatDate(raw) : `Select ${field.name.toLowerCase()}`}
+            </Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -470,7 +494,14 @@ export function FillRecordScreen() {
       );
     }
 
-    const isMultiline = field.name.toLowerCase().includes('notes') || field.name.toLowerCase().includes('address');
+    const lowerName = field.name.toLowerCase();
+    const isMultiline = lowerName.includes('notes') || lowerName.includes('address');
+    const fieldKind =
+      field.type === 'number' ? 'number' :
+      lowerName.includes('gstin') ? 'gstin' :
+      lowerName.includes('phone') || lowerName.includes('mobile') ? 'phone' :
+      lowerName.includes('email') ? 'email' :
+      'text';
     return (
       <View key={field.id} style={styles.fieldBlock}>
         <Text style={styles.fieldLabel}>{field.name}{field.required ? ' *' : ''}</Text>
@@ -480,7 +511,7 @@ export function FillRecordScreen() {
           onChangeText={v => setValue(field.id, v)}
           placeholder={`Enter ${field.name.toLowerCase()}`}
           placeholderTextColor={COLORS.textMuted}
-          keyboardType={field.type === 'number' ? 'numeric' : 'default'}
+          {...fieldKeyboardProps(fieldKind)}
           multiline={isMultiline}
         />
       </View>
@@ -508,32 +539,26 @@ export function FillRecordScreen() {
         <Appbar.Content title={`New ${documentTypeName}`} titleStyle={styles.appbarTitle} />
       </Appbar.Header>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      {/* Sticky running total — only for transaction docs */}
+      {isTransaction && (
+        <Surface style={styles.stickyTotal} elevation={3}>
+          <View>
+            <Text style={styles.stickyLabel}>{totalLabel(documentTypeName)}</Text>
+            <Text style={styles.stickyAmount}>
+              {formatCurrency(runningTotal)}
+            </Text>
+          </View>
+          <View style={[styles.stickyBadge, { backgroundColor: runningTotal > 0 ? `${COLORS.success}15` : COLORS.background }]}>
+            <Ionicons
+              name={runningTotal > 0 ? 'checkmark-circle' : 'calculator-outline'}
+              size={20}
+              color={runningTotal > 0 ? COLORS.success : COLORS.textMuted}
+            />
+          </View>
+        </Surface>
+      )}
 
-        {/* Sticky running total — only for transaction docs */}
-        {isTransaction && (
-          <Surface style={styles.stickyTotal} elevation={3}>
-            <View>
-              <Text style={styles.stickyLabel}>{totalLabel(documentTypeName)}</Text>
-              <Text style={styles.stickyAmount}>
-                ₹{runningTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </Text>
-            </View>
-            <View style={[styles.stickyBadge, { backgroundColor: runningTotal > 0 ? `${COLORS.success}15` : COLORS.background }]}>
-              <Ionicons
-                name={runningTotal > 0 ? 'checkmark-circle' : 'calculator-outline'}
-                size={20}
-                color={runningTotal > 0 ? COLORS.success : COLORS.textMuted}
-              />
-            </View>
-          </Surface>
-        )}
-
-        <ScrollView
-          style={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+      <KeyboardAwareScreen edges={[]} style={styles.scroll}>
           {fields.flatMap((field) => {
             const nodes: React.ReactNode[] = [renderField(field)];
             if (isGst && field.id === 'customer_name') {
@@ -563,12 +588,14 @@ export function FillRecordScreen() {
             }
             return nodes;
           })}
-          <View style={{ height: 24 }} />
-          <Button label="Preview →" onPress={handlePreview} loading={loading} />
-          <View style={{ height: 40 }} />
-        </ScrollView>
+          <View style={{ height: 96 }} />
+      </KeyboardAwareScreen>
 
-        {/* Customer State picker modal */}
+      <StickyBottomActionBar style={styles.previewBar}>
+        <Button label="Preview →" onPress={handlePreview} loading={loading} />
+      </StickyBottomActionBar>
+
+      {/* Customer State picker modal */}
         <Modal visible={stateModal} transparent animationType="slide" onRequestClose={() => setStateModal(false)}>
           <View style={styles.modalOverlay}>
             <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPress={() => setStateModal(false)} />
@@ -593,7 +620,15 @@ export function FillRecordScreen() {
             </View>
           </View>
         </Modal>
-      </KeyboardAvoidingView>
+
+      <CalendarPickerModal
+        visible={datePickerFieldId !== null}
+        onClose={() => setDatePickerFieldId(null)}
+        onSelect={(d) => {
+          if (datePickerFieldId) setValue(datePickerFieldId, formatDateIso(d.toISOString()));
+          setDatePickerFieldId(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -617,6 +652,13 @@ const styles = StyleSheet.create({
   },
   stickyLabel:  { fontSize: 12, fontWeight: '600', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
   stickyAmount: { fontSize: 20, fontWeight: '800', color: COLORS.text, marginTop: 2 },
+  previewBar: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
   stickyBadge:  { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 
   // Fields

@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'rera_v2.db';
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -47,6 +47,68 @@ export async function initDatabase(): Promise<void> {
   if (current < 8) await migration8(database);
   if (current < 9) await migration9(database);
   if (current < 10) await migration10(database);
+  if (current < 11) await migration11(database);
+}
+
+// ─── Migration 11 — Rename stale 'Vendor Name'/'Paid To' counterparty fields
+// to 'Customer Name' in both saved template configs and already-recorded
+// document data, so existing Purchase Order/Expense Voucher/Dispatch Sheet
+// documents render their Bill-To section instead of staying blank forever.
+
+async function migration11(db: SQLite.SQLiteDatabase): Promise<void> {
+  const RENAME_MAP: Record<string, string> = {
+    'Vendor Name': 'Customer Name',
+    'Paid To':     'Customer Name',
+  };
+
+  // 1. template_versions.config.extraFields[].label
+  const versions = await db.getAllAsync<{ id: string; config: string }>(
+    'SELECT id, config FROM template_versions WHERE config IS NOT NULL'
+  );
+  for (const v of versions) {
+    let config: any;
+    try { config = JSON.parse(v.config); } catch { continue; }
+    if (!Array.isArray(config?.extraFields)) continue;
+
+    let changed = false;
+    for (const ef of config.extraFields) {
+      if (ef && typeof ef.label === 'string' && RENAME_MAP[ef.label]) {
+        ef.label = RENAME_MAP[ef.label];
+        ef.key = 'customer_name';
+        changed = true;
+      }
+    }
+    if (changed) {
+      await db.runAsync('UPDATE template_versions SET config = ? WHERE id = ?', [JSON.stringify(config), v.id]);
+    }
+  }
+
+  // 2. invoice_snapshots.data_json[key]
+  const snapshots = await db.getAllAsync<{ invoice_id: string; data_json: string }>(
+    'SELECT invoice_id, data_json FROM invoice_snapshots WHERE data_json IS NOT NULL'
+  );
+  for (const s of snapshots) {
+    let data: any;
+    try { data = JSON.parse(s.data_json); } catch { continue; }
+    if (typeof data !== 'object' || data === null) continue;
+
+    let changed = false;
+    for (const [oldKey, newKey] of Object.entries(RENAME_MAP)) {
+      if (oldKey in data && !(newKey in data)) {
+        data[newKey] = data[oldKey];
+        delete data[oldKey];
+        changed = true;
+      }
+    }
+    if (changed) {
+      await db.runAsync('UPDATE invoice_snapshots SET data_json = ? WHERE invoice_id = ?', [JSON.stringify(data), s.invoice_id]);
+    }
+  }
+
+  await db.runAsync(
+    `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+    [11, new Date().toISOString()]
+  );
 }
 
 // ─── Migration 10 — Add signature_path to businesses ────────────────────────

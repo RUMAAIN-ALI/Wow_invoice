@@ -11,6 +11,7 @@ import { searchAllInvoices, GlobalSearchInvoice } from '../services/invoiceServi
 import { searchCustomers } from '../services/customerService';
 import { getSession } from '../services/businessService';
 import { COLORS } from '../constants';
+import { formatCurrencyFromPaise, formatDate as fmtDate } from '../services/formatService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -18,11 +19,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 const MIN_QUERY_LEN = 2;
 
 function fmtMoney(paise: number): string {
-  return '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatCurrencyFromPaise(paise);
 }
 
 type ResultItem =

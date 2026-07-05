@@ -1,4 +1,6 @@
 import { InvoiceItemData } from './invoice-data';
+import { DateFormat } from '../themes/design-tokens';
+import { formatCurrencyHtml, formatDateByToken } from '../../services/formatService';
 
 /**
  * esc: Escapes HTML special characters to prevent rendering bugs and injection vulnerabilities.
@@ -11,22 +13,16 @@ export function esc(s: unknown): string {
  * fmt: Formats numerical values into Indian Rupee (INR) currency strings with Indian digit grouping.
  */
 export function fmt(n: number): string {
-  return '&#8377;' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatCurrencyHtml(n);
 }
 
 /**
- * fmtDate: Converts ISO strings into readable local date format (e.g., "21 June 2026").
+ * fmtDate: Converts ISO strings per the business's configured date format preference.
  */
-export function fmtDate(iso: string, format: string = 'DD MMMM YYYY'): string {
+export function fmtDate(iso: string, format: DateFormat = 'DD MMMM YYYY'): string {
   try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return esc(iso);
-    
-    // For standard Indian locale representation matching legacy
-    if (format === 'DD MMMM YYYY') {
-      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-    }
-    return d.toLocaleDateString('en-IN');
+    if (isNaN(new Date(iso).getTime())) return esc(iso);
+    return formatDateByToken(iso, format);
   } catch {
     return esc(iso);
   }

@@ -1,10 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, Modal,
+  ScrollView, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Surface } from 'react-native-paper';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,6 +15,10 @@ import { createRecord } from '../services/invoiceService';
 import { cardShadow } from '../utils/shadow';
 import { CustomerAutocompleteField } from '../components/CustomerAutocompleteField';
 import { Customer } from '../types';
+import { formatCurrency, formatDate } from '../services/formatService';
+import { KeyboardAwareScreen } from '../components/keyboard/KeyboardAwareScreen';
+import { StickyBottomActionBar } from '../components/keyboard/StickyBottomActionBar';
+import { fieldKeyboardProps } from '../components/keyboard/fieldKeyboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,11 +67,11 @@ function emptyItem(): GstItem {
 }
 
 function fmtMoney(n: number): string {
-  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatCurrency(n);
 }
 
 function todayStr(): string {
-  return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatDate(new Date().toISOString());
 }
 
 // ─── GST calculations ─────────────────────────────────────────────────────────
@@ -345,13 +348,7 @@ export function CreateGstInvoiceScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-          style={S.scroll}
-          contentContainerStyle={S.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+      <KeyboardAwareScreen edges={[]} style={S.scroll} contentContainerStyle={S.scrollContent}>
 
           {/* ── Invoice Info Card ── */}
           <View style={S.card}>
@@ -584,11 +581,10 @@ export function CreateGstInvoiceScreen() {
           </View>
 
           <View style={{ height: 100 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScreen>
 
       {/* ── Sticky CTA ── */}
-      <Surface style={S.stickyBar} elevation={2}>
+      <StickyBottomActionBar style={S.stickyBar}>
         <TouchableOpacity
           style={[S.generateBtn, saving && { opacity: 0.6 }]}
           onPress={handleGenerateTap}
@@ -598,7 +594,7 @@ export function CreateGstInvoiceScreen() {
           <Ionicons name="document-text" size={20} color="#fff" />
           <Text style={S.generateBtnText}>{saving ? 'Generating…' : 'Generate GST Invoice'}</Text>
         </TouchableOpacity>
-      </Surface>
+      </StickyBottomActionBar>
 
       {/* ── Add / Edit Item Modal ── */}
       <Modal visible={itemModal} transparent animationType="slide" onRequestClose={() => setItemModal(false)}>
@@ -624,7 +620,7 @@ export function CreateGstInvoiceScreen() {
                     style={S.input}
                     value={String(draft.qty)}
                     onChangeText={v => setDraftField('qty', parseFloat(v) || 0)}
-                    keyboardType="numeric"
+                    {...fieldKeyboardProps('decimal')}
                     placeholderTextColor={C.muted}
                   />
                 </View>
@@ -647,7 +643,7 @@ export function CreateGstInvoiceScreen() {
                     style={S.input}
                     value={String(draft.price)}
                     onChangeText={v => setDraftField('price', parseFloat(v) || 0)}
-                    keyboardType="numeric"
+                    {...fieldKeyboardProps('decimal')}
                     placeholderTextColor={C.muted}
                   />
                 </View>
@@ -688,7 +684,7 @@ export function CreateGstInvoiceScreen() {
                       value={draft.hsn}
                       onChangeText={v => setDraftField('hsn', v)}
                       placeholder="1006"
-                      keyboardType="numeric"
+                      {...fieldKeyboardProps('number')}
                       placeholderTextColor={C.muted}
                     />
                   </View>
@@ -700,7 +696,7 @@ export function CreateGstInvoiceScreen() {
                       value={draft.discount ? String(draft.discount) : ''}
                       onChangeText={v => setDraftField('discount', parseFloat(v) || 0)}
                       placeholder="0"
-                      keyboardType="numeric"
+                      {...fieldKeyboardProps('decimal')}
                       placeholderTextColor={C.muted}
                     />
                   </View>

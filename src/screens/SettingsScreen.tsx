@@ -14,6 +14,8 @@ import { getActivePrintProfile, updatePrintProfile } from '../services/printProf
 import { ColorPickerModal } from '../components/ColorPickerModal';
 import { cardShadow } from '../utils/shadow';
 import { exportBackup } from '../services/backupService';
+import { ShareFormat, getShareFormat, setShareFormat } from '../services/appPreferencesService';
+import { KeyboardAwareScreen } from '../components/keyboard/KeyboardAwareScreen';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -68,6 +70,12 @@ const FONT_OPTIONS: { value: PrintFontSize; label: string }[] = [
   { value: 'large',  label: 'Large'  },
 ];
 
+const SHARE_FORMAT_OPTIONS: { value: ShareFormat; label: string; sub: string; icon: string }[] = [
+  { value: 'pdf',   label: 'PDF',            sub: 'Always share as a PDF file',   icon: 'document-text-outline' },
+  { value: 'image', label: 'Image',          sub: 'Always share as a PNG image',  icon: 'image-outline' },
+  { value: 'ask',   label: 'Ask Every Time', sub: 'Choose PDF or Image each time', icon: 'help-circle-outline' },
+];
+
 export function SettingsScreen() {
   const [s, setS]                   = useState<SettingsState>(EMPTY);
   const [print, setPrint]           = useState<PrintProfile | null>(null);
@@ -76,14 +84,16 @@ export function SettingsScreen() {
   const [stateModal, setStateModal] = useState(false);
   const [typeModal, setTypeModal]   = useState(false);
   const [backingUp, setBackingUp]   = useState(false);
+  const [shareFormat, setShareFormatState] = useState<ShareFormat>('pdf');
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([getBusinessSettings(), getActivePrintProfile()]).then(([loaded, profile]) => {
+      Promise.all([getBusinessSettings(), getActivePrintProfile(), getShareFormat()]).then(([loaded, profile, format]) => {
         if (!active) return;
         if (loaded) setS({ ...EMPTY, ...loaded });
         setPrint(profile);
+        setShareFormatState(format);
       });
       return () => { active = false; };
     }, [])
@@ -91,6 +101,11 @@ export function SettingsScreen() {
 
   const setPrintField = <K extends keyof PrintProfile>(key: K, value: PrintProfile[K]) =>
     setPrint(prev => prev ? { ...prev, [key]: value } : prev);
+
+  const chooseShareFormat = async (format: ShareFormat) => {
+    setShareFormatState(format);
+    await setShareFormat(format);
+  };
 
   const set = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) =>
     setS(prev => ({ ...prev, [key]: value }));
@@ -201,12 +216,7 @@ export function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={ST.scroll}
-        contentContainerStyle={ST.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+      <KeyboardAwareScreen edges={[]} style={ST.scroll} contentContainerStyle={ST.content}>
 
         {/* ── Profile Card ── */}
         <View style={ST.profileCard}>
@@ -469,6 +479,37 @@ export function SettingsScreen() {
           </Field>
         </View>
 
+        {/* ═══════════ 6b. Sharing ═══════════ */}
+        <SectionLabel icon="share-social-outline" title="Sharing" />
+        <View style={ST.card}>
+          <Field label="Default Share Format" hint="What the Share button on a document produces">
+            {SHARE_FORMAT_OPTIONS.map((opt, i) => {
+              const active = shareFormat === opt.value;
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[ST.shareFormatRow, i > 0 && ST.shareFormatRowBorder]}
+                  onPress={() => chooseShareFormat(opt.value)}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name={opt.icon as any} size={18} color={active ? C.orange : C.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[ST.shareFormatLabel, active && { color: C.orange, fontWeight: '700' }]}>
+                      {opt.label}
+                    </Text>
+                    <Text style={ST.shareFormatSub}>{opt.sub}</Text>
+                  </View>
+                  <Ionicons
+                    name={active ? 'radio-button-on' : 'radio-button-off'}
+                    size={20}
+                    color={active ? C.orange : C.border}
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </Field>
+        </View>
+
         {/* ═══════════ 7. Data & Backup ═══════════ */}
         <SectionLabel icon="cloud-upload-outline" title="Data & Backup" />
         <View style={ST.card}>
@@ -487,7 +528,7 @@ export function SettingsScreen() {
         </View>
 
         <View style={{ height: 48 }} />
-      </ScrollView>
+      </KeyboardAwareScreen>
 
       {/* ── Modals ── */}
       <ColorPickerModal
@@ -685,6 +726,12 @@ const ST = StyleSheet.create({
   colorSwatch: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: C.border },
   colorHex:   { flex: 1, fontSize: 15, fontWeight: '600', color: C.text },
   colorChange: { fontSize: 13, color: C.orange, fontWeight: '600' },
+
+  // Share format rows
+  shareFormatRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  shareFormatRowBorder: { borderTopWidth: 1, borderTopColor: C.border },
+  shareFormatLabel: { fontSize: 14, fontWeight: '600', color: C.text },
+  shareFormatSub: { fontSize: 12, color: C.textMuted, marginTop: 1 },
 
   // Signature row
   signatureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

@@ -17,6 +17,7 @@ import {
 import { getRecordsByDocumentType, deleteRecord } from '../services/invoiceService';
 import { navigateToDocument } from '../navigation/documentRouter';
 import { cardShadow } from '../utils/shadow';
+import { formatDate as fmtDateStd, formatTime } from '../services/formatService';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -120,9 +121,9 @@ export function DocumentDashboardScreen() {
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     if (d.toDateString() === new Date().toDateString()) {
-      return `Today ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`;
+      return `Today ${formatTime(iso)}`;
     }
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    return fmtDateStd(iso);
   };
 
   if (!docType) return null;

@@ -337,10 +337,10 @@ const FIELD_PRESETS: Record<string, string[]> = {
   'inspection report':   ['Inspector Name', 'Date', 'Location', 'Findings', 'Remarks'],
   // ── Logistics ─────────────────────────────────────────────────────────────
   'delivery challan':    ['Customer Name', 'Delivery Date', 'Driver Name', 'Vehicle No', 'From', 'To', 'Remarks'],
-  'dispatch sheet':      ['Date', 'From', 'To', 'Driver Name', 'Vehicle No', 'Remarks'],
+  'dispatch sheet':      ['Customer Name', 'Date', 'From', 'To', 'Driver Name', 'Vehicle No', 'Remarks'],
   // ── Business ──────────────────────────────────────────────────────────────
   'expense report':      ['Date', 'Category', 'Description', 'Amount', 'Approved By'],
-  'expense voucher':     ['Paid To', 'Date', 'Category', 'Amount', 'Notes'],
+  'expense voucher':     ['Customer Name', 'Date', 'Category', 'Amount', 'Notes'],
   'stock transfer':      ['From Location', 'To Location', 'Date', 'Items', 'Transferred By'],
   // ── Transaction extra fields (items table added separately via templateType)
   'invoice':             ['Customer Name', 'Due Date', 'Notes'],
@@ -349,7 +349,7 @@ const FIELD_PRESETS: Record<string, string[]> = {
   'proforma invoice':    ['Customer Name', 'Valid Until', 'Terms', 'Notes'],
   'quotation':           ['Customer Name', 'Valid Until', 'Terms'],
   'receipt':             ['Customer Name', 'Payment Method', 'Notes'],
-  'purchase order':      ['Vendor Name', 'Order Date', 'Delivery Date', 'Notes'],
+  'purchase order':      ['Customer Name', 'Customer GSTIN', 'Customer State', 'Order Date', 'Delivery Date', 'Notes'],
   'delivery note':       ['Customer Name', 'Delivery Date', 'Driver Name', 'Notes'],
 };
 

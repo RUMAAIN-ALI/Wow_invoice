@@ -3,6 +3,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS } from '../constants';
+import { formatMonthYear } from '../services/formatService';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -62,7 +63,7 @@ export function CalendarPickerModal({
                 <Ionicons name="chevron-back" size={20} color={COLORS.text} />
               </TouchableOpacity>
               <Text style={styles.monthLabel}>
-                {viewDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                {formatMonthYear(viewDate.toISOString())}
               </Text>
               <TouchableOpacity onPress={() => goMonth(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="chevron-forward" size={20} color={COLORS.text} />

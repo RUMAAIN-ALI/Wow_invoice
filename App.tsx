@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, MD3LightTheme } from 'react-native-paper';
+import { KeyboardProvider, KeyboardToolbar } from 'react-native-keyboard-controller';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { initDatabase } from './src/database/db';
 import { bootstrapIfNeeded } from './src/services/businessService';
@@ -88,11 +89,14 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <PaperProvider theme={theme}>
-          <AppNavigator />
-        </PaperProvider>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <PaperProvider theme={theme}>
+            <AppNavigator />
+            <KeyboardToolbar />
+          </PaperProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

@@ -1,5 +1,6 @@
 import { DocRecord, BusinessSettings } from '../types';
 import { renderLegacyInput } from '../invoice/renderer/adapter';
+import { formatCurrencyHtml, formatDate } from '../services/formatService';
 
 export type DataMap = Record<string, any>;
 
@@ -79,15 +80,12 @@ function esc(s: any): string {
 }
 
 function fmt(n: any): string {
-  const num = Number(n ?? 0);
-  return '&#8377;' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatCurrencyHtml(Number(n ?? 0));
 }
 
 function fmtDate(iso: any): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  if (!iso || isNaN(new Date(iso).getTime())) return '';
+  return formatDate(iso);
 }
 
 function getTaxable(item: any): number {

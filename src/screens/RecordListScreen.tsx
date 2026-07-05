@@ -14,6 +14,7 @@ import {
 import { COLORS, DOC_TYPE_COLORS } from '../constants';
 import { navigateToDocument } from '../navigation/documentRouter';
 import { CalendarPickerModal } from '../components/CalendarPickerModal';
+import { formatMonthYear, formatMonthName, formatDate } from '../services/formatService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'RecordList'>;
@@ -29,15 +30,15 @@ function monthKey(iso: string): string {
 }
 
 function monthLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  return formatMonthYear(iso);
 }
 
 function monthName(monthNum: string): string {
-  return new Date(2000, parseInt(monthNum, 10) - 1, 1).toLocaleDateString('en-IN', { month: 'long' });
+  return formatMonthName(parseInt(monthNum, 10));
 }
 
 function fmtShortDate(d: Date): string {
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDate(d.toISOString());
 }
 
 export function RecordListScreen() {

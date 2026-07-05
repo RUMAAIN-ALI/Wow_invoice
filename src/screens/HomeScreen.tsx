@@ -15,6 +15,7 @@ import { getBusinessSettings, getSession } from '../services/businessService';
 import { DOC_TYPE_COLORS } from '../constants';
 import { navigateToDocument } from '../navigation/documentRouter';
 import { cardShadow } from '../utils/shadow';
+import { formatCurrencyFromPaise, formatDateWeekday, formatDate as formatDateStd } from '../services/formatService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -44,13 +45,11 @@ function getGreeting(): string {
 }
 
 function fmtMoney(paise: number): string {
-  return '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return formatCurrencyFromPaise(paise);
 }
 
 function getTodayLabel(): string {
-  return new Date().toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  });
+  return formatDateWeekday(new Date().toISOString());
 }
 
 const CATEGORY_ICON: Record<string, string> = {
@@ -151,7 +150,7 @@ export function HomeScreen() {
     yesterday.setDate(yesterday.getDate() - 1);
     if (d.toDateString() === today.toDateString()) return 'Today';
     if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    return formatDateStd(iso);
   };
 
   const docColors = (typeName: string) =>
