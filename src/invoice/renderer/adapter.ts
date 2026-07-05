@@ -23,6 +23,7 @@ export function renderLegacyInput(
   const preferences: BusinessPreferences = {
     showLogo: !!biz.logo,
     logoSize: 'medium',
+    logoPosition: 'left',
     showBusinessName: true,
     showAddress: !!biz.address,
     showPhone: !!biz.phone,
@@ -108,6 +109,8 @@ export function renderLegacyInput(
     sellerBankName: biz.bankName ?? undefined,
     sellerAccountNumber: biz.accountNumber ?? undefined,
     sellerIfsc: biz.ifsc ?? undefined,
+    sellerLogoUri: biz.logo ?? undefined,
+    sellerSignatureUri: biz.signature ?? undefined,
   };
 
   // 7. Resolve Theme configuration

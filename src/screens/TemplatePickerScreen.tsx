@@ -18,7 +18,7 @@ import { sanitizeHtml } from '../services/htmlSanitizer';
 import { computeStaticSignature } from '../services/templateValidator';
 import { migrateAiDesignIfNeeded } from '../services/templateMigration';
 import { PhotoDebugModal } from '../components/PhotoDebugModal';
-import { COLORS } from '../constants';
+import { COLORS, TEMPLATES_BY_DOCUMENT_TYPE } from '../constants';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'TemplatePicker'>;
@@ -125,6 +125,69 @@ function ThermalThumb() {
   );
 }
 
+function GstStandardThumb({ brand }: { brand: string }) {
+  return (
+    <View style={[thumb.card, { borderColor: brand }]}>
+      <View style={thumb.body}>
+        <View style={thumb.row}>
+          <View style={[thumb.cell, { width: 60 }]} />
+        </View>
+        <View style={[thumb.gstBand, { borderColor: brand, backgroundColor: `${brand}18` }]}>
+          <View style={[thumb.gstBandLine, { backgroundColor: brand }]} />
+        </View>
+        {[80, 55].map((w, i) => (
+          <View key={i} style={thumb.row}>
+            <View style={[thumb.cell, { width: w }]} />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function GstCompactThumb({ brand }: { brand: string }) {
+  return (
+    <View style={[thumb.card, { borderColor: brand }]}>
+      <View style={thumb.body}>
+        <View style={[thumb.gcHdr, { borderBottomColor: brand }]}>
+          <View style={[thumb.cell, { width: 50, height: 6 }]} />
+        </View>
+        {[1, 2, 3, 4].map(i => (
+          <View key={i} style={[thumb.row, { height: 5 }]}>
+            <View style={[thumb.cell, { width: 70, height: 3 }]} />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// Shape groups — mirrors the renderer's shape mapping. Many template ids share
+// one representative thumbnail since they share the same visual layout shape.
+const FORMAL_SHAPE_IDS = new Set([
+  'letterhead', 'gst_formal', 'corporate_quote', 'sales_proposal',
+  'professional_proforma', 'corporate_po', 'professional_report',
+]);
+const COMPACT_SHAPE_IDS = new Set(['gst_compact', 'minimal_quote', 'compact_receipt', 'simple_expense']);
+const STANDARD_SHAPE_IDS = new Set([
+  'standard_proforma', 'procurement_po', 'voucher', 'dispatch', 'warehouse',
+  'standard_dispatch', 'transfer_sheet', 'workshop', 'service_center',
+  'inspection', 'standard_work_order', 'site_inspection',
+]);
+const BLANK_SHAPE_IDS = new Set(['blank_template']);
+
+function shapeThumbFor(id: string, brand: string): React.ReactNode {
+  if (id === 'classic') return <ClassicThumb brand={brand} />;
+  if (id === 'modern') return <ModernThumb brand={brand} />;
+  if (id === 'minimal' || BLANK_SHAPE_IDS.has(id)) return <MinimalThumb />;
+  if (id === 'thermal') return <ThermalThumb />;
+  if (id === 'gst_standard') return <GstStandardThumb brand={brand} />;
+  if (COMPACT_SHAPE_IDS.has(id)) return <GstCompactThumb brand={brand} />;
+  if (FORMAL_SHAPE_IDS.has(id)) return <LetterheadThumb brand={brand} />;
+  if (STANDARD_SHAPE_IDS.has(id)) return <ClassicThumb brand={brand} />;
+  return <ClassicThumb brand={brand} />;
+}
+
 const thumb = StyleSheet.create({
   card:         { width: 90, height: 120, borderRadius: 8, overflow: 'hidden', borderWidth: 1.5, backgroundColor: '#fff' },
   topBar:       { height: 18 },
@@ -149,6 +212,9 @@ const thumb = StyleSheet.create({
   thmDash:      { height: 1, width: '90%', backgroundColor: '#999', marginVertical: 3 },
   thmRow:       { flexDirection: 'row', justifyContent: 'space-between', width: '90%', marginBottom: 3 },
   thmCell:      { height: 4, width: 40, backgroundColor: '#ccc', borderRadius: 1 },
+  gstBand:      { height: 14, borderRadius: 3, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 6, marginVertical: 4 },
+  gstBandLine:  { height: 4, width: 44, borderRadius: 2 },
+  gcHdr:        { borderBottomWidth: 1.5, paddingBottom: 4, marginBottom: 4 },
 });
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -157,6 +223,11 @@ export function TemplatePickerScreen() {
   const navigation = useNavigation<Nav>();
   const route      = useRoute<Route>();
   const { documentTypeId, documentTypeName } = route.params;
+
+  const availableTemplateIds = TEMPLATES_BY_DOCUMENT_TYPE[documentTypeName.toLowerCase().trim()];
+  const availableDesigns = availableTemplateIds
+    ? BUILTIN_DESIGNS.filter(d => availableTemplateIds.includes(d.id))
+    : BUILTIN_DESIGNS;
 
   const [selectedId,  setSelectedId]  = useState('classic');
   const [aiTemplates, setAiTemplates] = useState<Array<{ id: string; name: string }>>([]);
@@ -311,7 +382,7 @@ export function TemplatePickerScreen() {
           style={styles.builtinScroll}
           contentContainerStyle={styles.builtinRow}
         >
-          {BUILTIN_DESIGNS.map(d => {
+          {availableDesigns.map(d => {
             const isSelected = selectedId === d.id;
             return (
               <TouchableOpacity
@@ -320,11 +391,7 @@ export function TemplatePickerScreen() {
                 onPress={() => selectDesign(d.id)}
                 activeOpacity={0.7}
               >
-                {d.id === 'classic'    && <ClassicThumb brand={brand} />}
-                {d.id === 'modern'     && <ModernThumb  brand={brand} />}
-                {d.id === 'minimal'    && <MinimalThumb />}
-                {d.id === 'letterhead' && <LetterheadThumb brand={brand} />}
-                {d.id === 'thermal'    && <ThermalThumb />}
+                {shapeThumbFor(d.id, brand)}
                 <View style={styles.designMeta}>
                   <Text style={[styles.designName, isSelected && { color: brand }]}>{d.name}</Text>
                   {isSelected && (

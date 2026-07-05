@@ -29,4 +29,6 @@ export interface InvoiceData {
   readonly sellerBankName?: string;
   readonly sellerAccountNumber?: string;
   readonly sellerIfsc?: string;
+  readonly sellerLogoUri?: string;
+  readonly sellerSignatureUri?: string;
 }

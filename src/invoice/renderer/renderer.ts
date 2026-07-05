@@ -5,6 +5,7 @@ import { renderHeader } from './header';
 import { renderItemsTable } from './items-table';
 import { renderTotals } from './totals';
 import { renderPaymentBlock, renderExtrasBlock, renderSignatureBlock } from './footer';
+import { FORMAL_IDS, COMPACT_IDS, BLANK_IDS } from './shapes';
 
 /**
  * renderInvoice: Pure function that compiles template HTML.
@@ -58,14 +59,104 @@ export function renderInvoice(
   ${renderPaymentBlock(theme, data)}
   <div class="foot">
     <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you for your business.'}</div>
-    ${renderSignatureBlock(theme, data.sellerName)}
+    ${renderSignatureBlock(theme, data.sellerName, data.sellerSignatureUri)}
   </div>
   <div class="disc">This is a computer-generated document.</div>
 </div></body>
 </html>`;
   }
 
-  if (template.id === 'letterhead') {
+  if (template.id === 'gst_standard') {
+    const fontStr = theme.fontFamily === 'Arial'
+      ? "Arial,Helvetica,sans-serif"
+      : `'${theme.fontFamily}',Arial,Helvetica,sans-serif`;
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-style:normal}
+  body{font-family:${fontStr};font-size:${theme.fontSizeBasePx}px;color:#1a1a1a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{max-width:794px;margin:0 auto;padding:32px 20px}
+  @media(min-width:600px){.page{padding:48px 52px}}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+  .hdr-left{flex:1;min-width:0}
+  .biz-name{font-size:20px;font-weight:700;color:${brand};word-break:break-word}
+  .biz-det{font-size:11px;color:#555;margin-top:6px;line-height:1.8;font-weight:400}
+  .doc-r{text-align:right;flex-shrink:0}
+  .badge{display:inline-block;background:${brand};color:#fff;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:4px 12px;border-radius:4px}
+  .docno{font-size:17px;font-weight:700;margin-top:8px}
+  .docdt{font-size:11px;color:#666;margin-top:3px;font-weight:500}
+  .gstin-band{display:flex;flex-wrap:wrap;gap:16px;align-items:center;background:${brand}12;border:1px solid ${brand}30;border-radius:8px;padding:10px 16px;margin:16px 0}
+  .gstin-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${brand}}
+  .gstin-value{font-size:14px;font-weight:700;color:#1a1a1a;font-family:'Courier New',monospace}
+  .gstin-state{font-size:11px;color:#666;margin-left:auto}
+  .bto{margin-bottom:20px}
+  .lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px}
+  .bname{font-size:15px;font-weight:600}
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .foot{margin-top:36px;padding-top:18px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+  .thanks{font-size:13px;color:#555;font-weight:500}
+  .disc{text-align:center;margin-top:18px;font-size:10px;color:#c0c0c0}
+</style>
+</head>
+<body><div class="page">
+  ${renderHeader(template.id, theme, data)}
+  ${data.items.length ? `<div class="tbl-wrap">${renderItemsTable(template.id, theme, data.items)}</div>` : ''}
+  ${data.items.length ? renderTotals(theme, data.items, data.sellerState, data.customerState) : ''}
+  ${renderExtrasBlock(data)}
+  ${renderPaymentBlock(theme, data)}
+  <div class="foot">
+    <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you for your business!'}</div>
+    ${renderSignatureBlock(theme, data.sellerName, data.sellerSignatureUri)}
+  </div>
+  <div class="disc">This is a computer-generated GST invoice.</div>
+</div></body>
+</html>`;
+  }
+
+  if (COMPACT_IDS.includes(template.id)) {
+    const fontStr = `'${theme.fontFamily}',Arial,Helvetica,sans-serif`;
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-style:normal}
+  body{font-family:${fontStr};font-size:${Math.max(theme.fontSizeBasePx - 1, 11)}px;color:#1a1a1a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{max-width:794px;margin:0 auto;padding:18px 16px}
+  .gc-hdr{border-bottom:2px solid ${brand};padding-bottom:8px;margin-bottom:8px}
+  .gc-biz{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+  .gc-biz-name{font-size:16px;font-weight:700;color:${brand}}
+  .gc-gstin{font-size:11px;color:#333;font-family:'Courier New',monospace}
+  .gc-doc{display:flex;justify-content:space-between;font-size:11px;color:#555;margin-top:4px}
+  .gc-bill{font-size:11px;color:#333;margin-top:4px}
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .foot{margin-top:14px;padding-top:8px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+  .thanks{font-size:11px;color:#555}
+  .disc{text-align:center;margin-top:10px;font-size:9px;color:#c0c0c0}
+</style>
+</head>
+<body><div class="page">
+  ${renderHeader(template.id, theme, data)}
+  ${data.items.length ? `<div class="tbl-wrap">${renderItemsTable(template.id, theme, data.items)}</div>` : ''}
+  ${data.items.length ? renderTotals(theme, data.items, data.sellerState, data.customerState) : ''}
+  ${renderExtrasBlock(data)}
+  ${renderPaymentBlock(theme, data)}
+  <div class="foot">
+    <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you!'}</div>
+    ${renderSignatureBlock(theme, data.sellerName, data.sellerSignatureUri)}
+  </div>
+  <div class="disc">This is a computer-generated document.</div>
+</div></body>
+</html>`;
+  }
+
+  if (FORMAL_IDS.includes(template.id)) {
     const fontStr = theme.fontFamily === 'Georgia'
       ? "Georgia,'Times New Roman',serif"
       : `'${theme.fontFamily}',Georgia,'Times New Roman',serif`;
@@ -107,7 +198,7 @@ export function renderInvoice(
   </div>
   <div class="foot">
     <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you for your business.'}</div>
-    ${renderSignatureBlock(theme, data.sellerName, template.id)}
+    ${renderSignatureBlock(theme, data.sellerName, data.sellerSignatureUri, template.id)}
   </div>
   <div class="disc">This is a computer-generated document.</div>
 </div></body>
@@ -151,7 +242,7 @@ export function renderInvoice(
 </html>`;
   }
 
-  if (template.id === 'minimal') {
+  if (BLANK_IDS.includes(template.id)) {
     const fontStr = theme.fontFamily === 'Georgia'
       ? "Georgia,'Times New Roman',serif"
       : `'${theme.fontFamily}',Georgia,'Times New Roman',serif`;
@@ -189,7 +280,7 @@ export function renderInvoice(
     ${renderPaymentBlock(theme, data)}
     <div class="foot">
       <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you for your business.'}</div>
-      ${renderSignatureBlock(theme, data.sellerName)}
+      ${renderSignatureBlock(theme, data.sellerName, data.sellerSignatureUri)}
     </div>
     <div class="disc">This is a computer-generated document.</div>
   </div>
@@ -238,7 +329,7 @@ export function renderInvoice(
   ${renderPaymentBlock(theme, data)}
   <div class="foot">
     <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you for your business!'}</div>
-    ${renderSignatureBlock(theme, data.sellerName)}
+    ${renderSignatureBlock(theme, data.sellerName, data.sellerSignatureUri)}
   </div>
   <div class="disc">This is a computer-generated document.</div>
 </div></body>

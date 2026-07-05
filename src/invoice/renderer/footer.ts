@@ -1,6 +1,7 @@
 import { ResolvedTheme } from '../themes/resolved-theme';
 import { InvoiceData } from './invoice-data';
 import { esc } from './utils';
+import { FORMAL_IDS } from './shapes';
 
 /**
  * renderPaymentBlock: Displays UPI and Bank Details side by side if enabled and present.
@@ -56,19 +57,29 @@ export function renderExtrasBlock(data: InvoiceData): string {
 /**
  * renderSignatureBlock: Generates the authorising signature line at the bottom.
  */
-export function renderSignatureBlock(theme: ResolvedTheme, bizName: string, templateId?: string): string {
+export function renderSignatureBlock(
+  theme: ResolvedTheme,
+  bizName: string,
+  signatureUri?: string,
+  templateId?: string
+): string {
   if (!theme.showSignature) return '';
-  if (templateId === 'letterhead') {
+
+  const signatureImg = signatureUri
+    ? `<img src="${esc(signatureUri)}" style="height:44px;max-width:180px;object-fit:contain;margin:0 auto 6px;display:block">`
+    : '';
+
+  if (templateId && FORMAL_IDS.includes(templateId)) {
     return `
 <div style="text-align:center;border:1px solid #ddd;border-radius:8px;padding:16px 24px;min-width:220px">
-  <div style="height:56px;border-bottom:2px solid ${theme.accentColor};width:200px;margin:0 auto 8px"></div>
+  ${signatureImg || `<div style="height:56px;border-bottom:2px solid ${theme.accentColor};width:200px;margin:0 auto 8px"></div>`}
   <div style="font-size:14px;font-weight:700">${esc(bizName)}</div>
   <div style="font-size:11px;color:#999;margin-top:3px;text-transform:uppercase;letter-spacing:0.5px">Authorised Signatory</div>
 </div>`;
   }
   return `
 <div style="text-align:center">
-  <div style="height:44px;border-bottom:1px solid #333;width:160px;margin:0 auto 6px"></div>
+  ${signatureImg || `<div style="height:44px;border-bottom:1px solid #333;width:160px;margin:0 auto 6px"></div>`}
   <div style="font-size:12px;font-weight:600">${esc(bizName)}</div>
   <div style="font-size:10px;color:#999;margin-top:2px">Authorised Signatory</div>
 </div>`;

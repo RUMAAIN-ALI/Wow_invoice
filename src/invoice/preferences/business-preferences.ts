@@ -1,4 +1,4 @@
-import { PaperSize, CurrencyFormat, DateFormat, QRPosition, SignaturePosition, LogoSize } from '../themes/design-tokens';
+import { PaperSize, CurrencyFormat, DateFormat, QRPosition, SignaturePosition, LogoSize, LogoPosition } from '../themes/design-tokens';
 
 /**
  * Business Preferences: Immutable flags representing what information is displayed.
@@ -8,6 +8,7 @@ export interface BusinessPreferences {
   // Brand visibility
   readonly showLogo: boolean;
   readonly logoSize: LogoSize;
+  readonly logoPosition: LogoPosition;
   readonly showBusinessName: boolean;
   readonly showAddress: boolean;
   readonly showPhone: boolean;

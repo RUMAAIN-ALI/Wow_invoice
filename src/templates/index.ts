@@ -263,10 +263,13 @@ function extrasBlockInline(entries: Array<[string, any]>): string {
 </div>`;
 }
 
-function signatureBlock(bizName: string): string {
+function signatureBlock(bizName: string, signatureUri?: string): string {
+  const signatureImg = signatureUri
+    ? `<img src="${esc(signatureUri)}" style="height:44px;max-width:180px;object-fit:contain;margin:0 auto 6px;display:block">`
+    : `<div style="height:44px;border-bottom:1px solid #333;width:160px;margin:0 auto 6px"></div>`;
   return `
 <div style="text-align:center">
-  <div style="height:44px;border-bottom:1px solid #333;width:160px;margin:0 auto 6px"></div>
+  ${signatureImg}
   <div style="font-size:12px;font-weight:600">${esc(bizName)}</div>
   <div style="font-size:10px;color:#999;margin-top:2px">Authorised Signatory</div>
 </div>`;
@@ -278,8 +281,32 @@ export const BUILTIN_DESIGNS: BuiltinDesign[] = [
   { id: 'classic',    name: 'Classic',           description: 'Two-column header with brand accent bar' },
   { id: 'modern',     name: 'Modern',            description: 'Full-width colour header band'  },
   { id: 'minimal',    name: 'Minimal',           description: 'Black & white, serif, elegant' },
-  { id: 'letterhead', name: 'Letterhead',        description: 'Corporate letterhead with large header & formal signature' },
-  { id: 'thermal',    name: 'Thermal / Compact', description: 'Single-column receipt for 58mm/80mm printers' },
+  { id: 'letterhead',   name: 'Letterhead',   description: 'Corporate letterhead with large header & formal signature' },
+  { id: 'thermal',      name: 'Thermal / Compact', description: 'Single-column receipt for 58mm/80mm printers' },
+  { id: 'gst_standard', name: 'GST Standard', description: 'Full compliance layout with a prominent GSTIN band' },
+  { id: 'gst_compact',  name: 'GST Compact',  description: 'Condensed GST layout that fits more line items per page' },
+  { id: 'gst_formal',            name: 'GST Formal',            description: 'Letterhead-style GST invoice with a prominent GSTIN band' },
+  { id: 'corporate_quote',       name: 'Corporate Quote',        description: 'Formal quotation layout for B2B and agency clients' },
+  { id: 'sales_proposal',        name: 'Sales Proposal',         description: 'Persuasive, branded proposal-style quotation layout' },
+  { id: 'minimal_quote',         name: 'Minimal Quote',          description: 'Condensed quotation layout, fits more items per page' },
+  { id: 'standard_proforma',     name: 'Standard Proforma',      description: 'Straightforward proforma invoice, two-column header' },
+  { id: 'professional_proforma', name: 'Professional Proforma',  description: 'Formal proforma invoice with a corporate letterhead band' },
+  { id: 'corporate_po',          name: 'Corporate PO',           description: 'Formal purchase order layout for vendor-facing documents' },
+  { id: 'procurement_po',        name: 'Procurement PO',         description: 'Detailed purchase order for procurement workflows' },
+  { id: 'compact_receipt',       name: 'Compact Receipt',        description: 'Condensed receipt layout for busy counters' },
+  { id: 'voucher',               name: 'Voucher',                description: 'Standard expense voucher layout' },
+  { id: 'simple_expense',        name: 'Simple Expense',         description: 'Condensed expense voucher for quick logging' },
+  { id: 'dispatch',              name: 'Dispatch',               description: 'Standard delivery challan for outgoing goods' },
+  { id: 'warehouse',             name: 'Warehouse',               description: 'Delivery challan variant for warehouse-to-warehouse transfers' },
+  { id: 'standard_dispatch',     name: 'Standard Dispatch',      description: 'Dispatch sheet for multi-item shipment runs' },
+  { id: 'transfer_sheet',        name: 'Transfer Sheet',         description: 'Stock transfer layout between locations' },
+  { id: 'workshop',              name: 'Workshop',               description: 'Job card for repair/workshop tracking' },
+  { id: 'service_center',        name: 'Service Center',         description: 'Job card variant for service-center intake' },
+  { id: 'inspection',            name: 'Inspection',             description: 'Service report focused on inspection checklists' },
+  { id: 'professional_report',   name: 'Professional Report',    description: 'Formal service report with a corporate letterhead band' },
+  { id: 'standard_work_order',   name: 'Standard Work Order',    description: 'Standard work order layout' },
+  { id: 'site_inspection',       name: 'Site Inspection',        description: 'Site visit report with inspection notes' },
+  { id: 'blank_template',        name: 'Blank Template',         description: 'Minimal starting point for a custom document type' },
 ];
 
 // ── AI template rendering ─────────────────────────────────────────────────────
@@ -330,7 +357,7 @@ export function renderAiTemplate(rawHtml: string, input: RenderInput): string {
     .replace(/%%TOTALS_BLOCK%%/g,     ctx.blocks.totals && itemRows.length ? gstTotalsBlock(itemRows, business.stateName, customerState, brand) : '')
     .replace(/%%PAYMENT_BLOCK%%/g,    paymentBlockInline(business))
     .replace(/%%EXTRAS_BLOCK%%/g,     ctx.blocks.extras ? extrasBlockInline(extraEntries) : '')
-    .replace(/%%SIGNATURE_BLOCK%%/g,  signatureBlock(business.name))
+    .replace(/%%SIGNATURE_BLOCK%%/g,  signatureBlock(business.name, business.signature))
     .replace(/%%SUBTOTAL%%/g,         fmt(itemRows.reduce((s, r) => s + getTaxable(r), 0)))
     .replace(/%%TOTAL%%/g,            fmt(itemRows.reduce((s, r) => s + getTaxable(r) * (1 + (r.gstPct ?? 0) / 100), 0)));
 }

@@ -65,6 +65,7 @@ const mockTemplateMinimal: TemplateDefinition = {
 const defaultPreferences: BusinessPreferences = {
   showLogo: true,
   logoSize: 'medium',
+  logoPosition: 'left',
   showBusinessName: true,
   showAddress: true,
   showPhone: true,

@@ -40,6 +40,7 @@ function rowToBusiness(row: any): Business {
     email:               row.email ?? undefined,
     brandColor:          row.brand_color,
     logoPath:            row.logo_path ?? undefined,
+    signaturePath:       row.signature_path ?? undefined,
     licenseNumber:       row.license_number ?? undefined,
     upiId:               row.upi_id ?? undefined,
     bankName:            row.bank_name ?? undefined,
@@ -92,6 +93,7 @@ export async function updateBusiness(id: string, updates: {
   email?: string;
   brandColor?: string;
   logoPath?: string;
+  signaturePath?: string;
   licenseNumber?: string;
   upiId?: string;
   bankName?: string;
@@ -116,6 +118,7 @@ export async function updateBusiness(id: string, updates: {
   if (updates.email              !== undefined) { pairs.push('email = ?');                vals.push(updates.email || null); }
   if (updates.brandColor         !== undefined) { pairs.push('brand_color = ?');          vals.push(updates.brandColor); }
   if (updates.logoPath           !== undefined) { pairs.push('logo_path = ?');            vals.push(updates.logoPath || null); }
+  if (updates.signaturePath      !== undefined) { pairs.push('signature_path = ?');       vals.push(updates.signaturePath || null); }
   if (updates.licenseNumber      !== undefined) { pairs.push('license_number = ?');       vals.push(updates.licenseNumber || null); }
   if (updates.upiId              !== undefined) { pairs.push('upi_id = ?');               vals.push(updates.upiId || null); }
   if (updates.bankName           !== undefined) { pairs.push('bank_name = ?');            vals.push(updates.bankName || null); }
@@ -214,6 +217,7 @@ export async function getBusinessSettings() {
     gstin:               biz.gstin,
     licenseNumber:       biz.licenseNumber,
     logo:                biz.logoPath,
+    signature:           biz.signaturePath,
     upiId:               biz.upiId,
     bankName:            biz.bankName,
     accountNumber:       biz.accountNumber,
@@ -229,7 +233,7 @@ export async function updateBusinessSettings(settings: {
   name?: string; type?: BusinessType; brandColor?: string;
   address?: string; city?: string; stateName?: string;
   phone?: string; email?: string; gstin?: string; licenseNumber?: string;
-  logo?: string; upiId?: string; bankName?: string;
+  logo?: string; signature?: string; upiId?: string; bankName?: string;
   accountNumber?: string; ifsc?: string;
   invoicePrefix?: string; invoiceStartNumber?: number; customBusinessType?: string; footerMessage?: string;
 }): Promise<void> {
@@ -247,6 +251,7 @@ export async function updateBusinessSettings(settings: {
     gstin:               settings.gstin,
     licenseNumber:       settings.licenseNumber,
     logoPath:            settings.logo,
+    signaturePath:       settings.signature,
     upiId:               settings.upiId,
     bankName:            settings.bankName,
     accountNumber:       settings.accountNumber,

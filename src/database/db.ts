@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'rera_v2.db';
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -46,6 +46,17 @@ export async function initDatabase(): Promise<void> {
   if (current < 7) await migration7(database);
   if (current < 8) await migration8(database);
   if (current < 9) await migration9(database);
+  if (current < 10) await migration10(database);
+}
+
+// ─── Migration 10 — Add signature_path to businesses ────────────────────────
+
+async function migration10(db: SQLite.SQLiteDatabase): Promise<void> {
+  try { await db.execAsync(`ALTER TABLE businesses ADD COLUMN signature_path TEXT`); } catch { /* column already exists */ }
+  await db.runAsync(
+    `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+    [10, new Date().toISOString()]
+  );
 }
 
 // ─── Migration 9 — Add template_id to print_profiles and backfill ───────────

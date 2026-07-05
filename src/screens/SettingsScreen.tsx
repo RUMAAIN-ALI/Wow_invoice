@@ -112,6 +112,7 @@ export function SettingsScreen() {
           gstin:              s.gstin,
           licenseNumber:      s.licenseNumber,
           logo:               s.logo,
+          signature:          s.signature,
           upiId:              s.upiId,
           bankName:           s.bankName,
           accountNumber:      s.accountNumber,
@@ -149,6 +150,20 @@ export function SettingsScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       set('logo', result.assets[0].uri);
+    }
+  };
+
+  const pickSignature = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access to upload a signature.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [3, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      set('signature', result.assets[0].uri);
     }
   };
 
@@ -438,6 +453,20 @@ export function SettingsScreen() {
               <Text style={ST.colorChange}>Change →</Text>
             </TouchableOpacity>
           </Field>
+          <Divider />
+          <Field label="Signature" hint="Shown in the Authorised Signatory box on printed documents">
+            <TouchableOpacity style={ST.signatureRow} onPress={pickSignature} activeOpacity={0.82}>
+              {s.signature ? (
+                <Image source={{ uri: s.signature }} style={ST.signatureImg} resizeMode="contain" />
+              ) : (
+                <View style={ST.signaturePlaceholder}>
+                  <Ionicons name="create-outline" size={18} color={C.textMuted} />
+                </View>
+              )}
+              <Text style={ST.selectText}>{s.signature ? 'Change signature' : 'Upload signature'}</Text>
+              <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
+            </TouchableOpacity>
+          </Field>
         </View>
 
         {/* ═══════════ 7. Data & Backup ═══════════ */}
@@ -656,6 +685,14 @@ const ST = StyleSheet.create({
   colorSwatch: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: C.border },
   colorHex:   { flex: 1, fontSize: 15, fontWeight: '600', color: C.text },
   colorChange: { fontSize: 13, color: C.orange, fontWeight: '600' },
+
+  // Signature row
+  signatureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  signatureImg: { width: 60, height: 32, borderRadius: 6, backgroundColor: C.orangeLight },
+  signaturePlaceholder: {
+    width: 60, height: 32, borderRadius: 6, backgroundColor: C.bg,
+    borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center',
+  },
 
   // Chip selectors (paper width, font size)
   chipRow:      { flexDirection: 'row', gap: 10, marginTop: 4 },

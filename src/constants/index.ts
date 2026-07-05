@@ -124,6 +124,29 @@ export const ALL_DOCUMENT_TYPES = [
   { name: 'Site Visit Report',category: 'services'  as DocumentCategory, icon: 'location-outline' },
 ];
 
+/**
+ * Which base template ids are available for a given document type, keyed by
+ * lowercase document type name. When a type has an entry here, only these
+ * templates are offered (replacing the generic Classic/Modern/Minimal/etc. set).
+ * Types with no entry fall back to every generic template — this is how new
+ * document-type-specific templates get rolled out incrementally.
+ */
+export const TEMPLATES_BY_DOCUMENT_TYPE: Record<string, string[]> = {
+  'gst invoice':          ['gst_standard', 'gst_compact', 'gst_formal'],
+  'quotation':            ['corporate_quote', 'sales_proposal', 'minimal_quote'],
+  'proforma invoice':     ['standard_proforma', 'professional_proforma'],
+  'purchase order':       ['corporate_po', 'procurement_po'],
+  'receipt':              ['thermal', 'compact_receipt'],
+  'expense voucher':      ['voucher', 'simple_expense'],
+  'delivery challan':     ['dispatch', 'warehouse'],
+  'dispatch sheet':       ['standard_dispatch'],
+  'stock transfer':       ['transfer_sheet'],
+  'job card':             ['workshop', 'service_center'],
+  'service report':       ['inspection', 'professional_report'],
+  'work order':           ['standard_work_order'],
+  'site visit report':    ['site_inspection'],
+};
+
 export const FIELD_TYPE_LABELS: Record<string, string> = {
   text:      'Text',
   number:    'Number',

@@ -82,6 +82,7 @@ function computeFingerprint(
     theme.table.density,
     pref.showLogo,
     pref.logoSize,
+    pref.logoPosition,
     pref.showQrCode,
     pref.qrPosition,
     pref.showBankDetails,
@@ -219,6 +220,7 @@ export function resolveTheme(
     // Resolved capabilities/preferences visibility flags
     showLogo,
     logoHeightPx: LOGO_HEIGHT_MAP[preferences.logoSize],
+    logoPosition: preferences.logoPosition,
     showBusinessName: preferences.showBusinessName,
     showAddress: preferences.showAddress && capabilities.layout.extraFields, // template address requires layout space
     showPhone: preferences.showPhone,

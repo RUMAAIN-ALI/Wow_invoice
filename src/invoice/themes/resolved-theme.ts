@@ -1,4 +1,4 @@
-import { FontFamily, TableStyle, QRPosition, SignaturePosition, CurrencyFormat, DateFormat } from './design-tokens';
+import { FontFamily, TableStyle, QRPosition, SignaturePosition, CurrencyFormat, DateFormat, LogoPosition } from './design-tokens';
 
 /**
  * Resolved Theme: Fully computed, flat object populated with all concrete visual & functional layout settings.
@@ -20,6 +20,7 @@ export interface ResolvedTheme {
   // Visibility Flags (Resolved from Template Capabilities && Business Preferences)
   readonly showLogo: boolean;
   readonly logoHeightPx: number;           // Concrete dimension mapping to logoSize
+  readonly logoPosition: LogoPosition;
   readonly showBusinessName: boolean;
   readonly showAddress: boolean;
   readonly showPhone: boolean;

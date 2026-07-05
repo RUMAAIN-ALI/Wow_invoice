@@ -65,6 +65,7 @@ export interface Business {
   email?: string;
   brandColor: string;
   logoPath?: string;
+  signaturePath?: string;
   licenseNumber?: string;
   upiId?: string;
   bankName?: string;
@@ -647,4 +648,4 @@ export type BusinessSettings = Pick<Business,
   | 'address' | 'city' | 'stateName' | 'phone' | 'email' | 'gstin'
   | 'licenseNumber' | 'upiId' | 'bankName' | 'accountNumber' | 'ifsc'
   | 'invoicePrefix' | 'invoiceStartNumber' | 'customBusinessType' | 'footerMessage'
-> & { logo?: string };
+> & { logo?: string; signature?: string };

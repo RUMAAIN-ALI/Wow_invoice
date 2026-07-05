@@ -1,6 +1,7 @@
 import { ResolvedTheme } from '../themes/resolved-theme';
 import { InvoiceData } from './invoice-data';
 import { esc, fmtDate } from './utils';
+import { FORMAL_IDS, COMPACT_IDS, BLANK_IDS } from './shapes';
 
 /**
  * renderHeader: Generates the HTML string representing the top header banner, 
@@ -24,8 +25,13 @@ export function renderHeader(
     ? `<div class="bto"><div class="lbl">BILL TO</div><div class="bname">${esc(data.customerName)}</div></div>`
     : '';
 
+  const logoBlock = theme.showLogo && data.sellerLogoUri
+    ? `<div style="text-align:${theme.logoPosition || 'left'};margin-bottom:10px"><img src="${esc(data.sellerLogoUri)}" style="height:${theme.logoHeightPx}px;max-width:220px;object-fit:contain"></div>`
+    : '';
+
   if (templateId === 'modern') {
     return `
+${logoBlock}
 <div class="hdr">
   <div class="hdr-left">
     <div class="biz-name">${theme.showBusinessName ? esc(data.sellerName) : ''}</div>
@@ -45,9 +51,54 @@ ${billToSection}
 `;
   }
 
-  if (templateId === 'letterhead') {
+  if (templateId === 'gst_standard') {
+    return `
+${logoBlock}
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="biz-name">${theme.showBusinessName ? esc(data.sellerName) : ''}</div>
+    <div class="biz-det">
+      ${theme.showAddress && data.sellerAddress ? esc(data.sellerAddress) + '<br>' : ''}
+      ${contactLine}
+    </div>
+  </div>
+  <div class="doc-r">
+    <div class="badge">${esc(data.documentTypeName)}</div>
+    <div class="docno">${esc(data.recordNumber)}</div>
+    <div class="docdt">${fmtDate(data.recordCreatedAt, theme.dateFormat)}</div>
+  </div>
+</div>
+${theme.showGstin && data.sellerGstin ? `
+<div class="gstin-band">
+  <span class="gstin-label">GSTIN</span>
+  <span class="gstin-value">${esc(data.sellerGstin)}</span>
+  ${data.sellerState ? `<span class="gstin-state">Place of Supply: ${esc(data.sellerState)}</span>` : ''}
+</div>` : ''}
+${billToSection}
+`;
+  }
+
+  if (COMPACT_IDS.includes(templateId)) {
+    return `
+${logoBlock}
+<div class="gc-hdr">
+  <div class="gc-biz">
+    <span class="gc-biz-name">${theme.showBusinessName ? esc(data.sellerName) : ''}</span>
+    ${theme.showGstin && data.sellerGstin ? `<span class="gc-gstin">GSTIN: ${esc(data.sellerGstin)}</span>` : ''}
+  </div>
+  <div class="gc-doc">
+    <span>${esc(data.documentTypeName)} ${esc(data.recordNumber)}</span>
+    <span>${fmtDate(data.recordCreatedAt, theme.dateFormat)}</span>
+  </div>
+  ${data.customerName ? `<div class="gc-bill">Bill To: ${esc(data.customerName)}${data.customerState ? ' &nbsp;|&nbsp; ' + esc(data.customerState) : ''}</div>` : ''}
+</div>
+`;
+  }
+
+  if (FORMAL_IDS.includes(templateId)) {
     return `
 <div class="letterhead-band">
+  ${theme.showLogo && data.sellerLogoUri ? `<div style="text-align:${theme.logoPosition || 'left'};margin-bottom:10px"><img src="${esc(data.sellerLogoUri)}" style="height:${theme.logoHeightPx}px;max-width:200px;object-fit:contain;filter:brightness(0) invert(1)"></div>` : ''}
   <div class="biz-name">${theme.showBusinessName ? esc(data.sellerName) : ''}</div>
   <div class="biz-det">
     ${theme.showAddress && data.sellerAddress ? esc(data.sellerAddress) + '<br>' : ''}
@@ -62,12 +113,19 @@ ${billToSection}
     <div class="docdt">${fmtDate(data.recordCreatedAt, theme.dateFormat)}</div>
   </div>
 </div>
+${templateId === 'gst_formal' && theme.showGstin && data.sellerGstin && data.sellerState ? `
+<div class="gstin-band">
+  <span class="gstin-label">GSTIN</span>
+  <span class="gstin-value">${esc(data.sellerGstin)}</span>
+  <span class="gstin-state">Place of Supply: ${esc(data.sellerState)}</span>
+</div>` : ''}
 ${billToSection}
 `;
   }
 
   if (templateId === 'thermal') {
     return `
+${logoBlock}
 <div class="thm-hdr">
   ${theme.showBusinessName ? `<div class="biz-name">${esc(data.sellerName)}</div>` : ''}
   <div class="biz-det">
@@ -86,9 +144,10 @@ ${billToSection}
 `;
   }
 
-  if (templateId === 'minimal') {
+  if (BLANK_IDS.includes(templateId)) {
     const minBillTo = data.customerName ? billToSection : '<div style="height:22px"></div>';
     return `
+${logoBlock}
 <div class="hdr">
   <div>
     <div class="biz-name">${theme.showBusinessName ? esc(data.sellerName) : ''}</div>
@@ -109,6 +168,7 @@ ${minBillTo}
 
   // Fallback to 'classic' layout
   return `
+${logoBlock}
 <div class="hdr">
   <div class="hdr-left">
     <div class="biz-name">${theme.showBusinessName ? esc(data.sellerName) : ''}</div>

@@ -52,3 +52,8 @@ export type QRPosition = 'header-right' | 'footer-left' | 'footer-right' | 'paym
  * Signature Position Token: Layout position for the authorized signatory block.
  */
 export type SignaturePosition = 'bottom-right' | 'bottom-left' | 'center';
+
+/**
+ * Logo Position Token: Horizontal alignment of the business logo within the header.
+ */
+export type LogoPosition = 'left' | 'center' | 'right';

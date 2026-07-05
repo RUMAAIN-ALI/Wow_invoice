@@ -125,6 +125,12 @@ const TABLE_STYLES: { label: string; value: string }[] = [
   { label: 'Clean',    value: 'minimal'  },
 ];
 
+const LOGO_POSITIONS: { label: string; value: string }[] = [
+  { label: 'Left',   value: 'left'   },
+  { label: 'Center', value: 'center' },
+  { label: 'Right',  value: 'right'  },
+];
+
 const PREVIEW_DATA = {
   recordNumber: 'INV-2026-0042',
   recordCreatedAt: '29 June 2026',
@@ -158,7 +164,7 @@ const BASE_THEME: DocumentTheme = {
 };
 
 const DEFAULT_PREFS: BusinessPreferences = {
-  showLogo: true, logoSize: 'medium', showBusinessName: true, showAddress: true,
+  showLogo: true, logoSize: 'medium', logoPosition: 'left', showBusinessName: true, showAddress: true,
   showPhone: true, showEmail: true, showGstin: true, showHsn: true,
   showUnit: true, showGstPct: true, showDiscount: true,
   showPaymentSection: true, showQrCode: true, qrPosition: 'payment-details',
@@ -516,41 +522,43 @@ export function StyleStudioScreen() {
         {/* ── Bottom Sheet ── */}
         <Animated.View style={[s.sheet, sheetStyle]}>
 
-          {/* Drag zone */}
-          <GestureDetector gesture={panGesture}>
-            <View style={s.sheetHeader}>
-              <View style={s.handle} />
+          {/* Drag zone — scoped to the handle only, so it doesn't fight the tab ScrollView's own gesture */}
+          <View style={s.sheetHeader}>
+            <GestureDetector gesture={panGesture}>
+              <View style={s.handleZone}>
+                <View style={s.handle} />
+              </View>
+            </GestureDetector>
 
-              {/* Tab bar */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={s.tabBar}
-                bounces={false}
-              >
-                {TABS.map(tab => {
-                  const active = activeTab === tab.key;
-                  return (
-                    <TouchableOpacity
-                      key={tab.key}
-                      style={[s.tab, active && s.tabActive]}
-                      onPress={() => setActiveTab(tab.key)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={tab.icon as any}
-                        size={16}
-                        color={active ? T.surface : T.textSecondary}
-                      />
-                      <Text style={[s.tabLabel, { color: active ? T.surface : T.textSecondary }]}>
-                        {tab.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          </GestureDetector>
+            {/* Tab bar */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.tabBar}
+              bounces={false}
+            >
+              {TABS.map(tab => {
+                const active = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[s.tab, active && s.tabActive]}
+                    onPress={() => setActiveTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={tab.icon as any}
+                      size={16}
+                      color={active ? T.surface : T.textSecondary}
+                    />
+                    <Text style={[s.tabLabel, { color: active ? T.surface : T.textSecondary }]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           {/* Scrollable content */}
           <ScrollView
@@ -794,6 +802,27 @@ export function StyleStudioScreen() {
                   value={preferences.showLogo}
                   onChange={v => patchPref('showLogo', v)}
                 />
+                {preferences.showLogo && (
+                  <View style={{ marginBottom: T.sp12 }}>
+                    <Text style={[s.groupLabel, { marginTop: 0 }]}>Logo Position</Text>
+                    <View style={s.segmentRow}>
+                      {LOGO_POSITIONS.map(p => {
+                        const active = preferences.logoPosition === p.value;
+                        return (
+                          <TouchableOpacity
+                            key={p.value}
+                            style={[s.segment, active && s.segmentActive]}
+                            onPress={() => patchPref('logoPosition', p.value as any)}
+                          >
+                            <Text style={[s.segmentText, active && { color: T.accent, fontWeight: '600' }]}>
+                              {p.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
                 <ToggleRow
                   label="Business Name"
                   value={preferences.showBusinessName}
@@ -959,13 +988,15 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: T.border,
   },
+  handleZone: {
+    paddingVertical: T.sp12,
+  },
   handle: {
     width: 36,
     height: 4,
     backgroundColor: T.borderStrong,
     borderRadius: T.r99,
     alignSelf: 'center',
-    marginBottom: T.sp12,
   },
 
   // Tab bar
