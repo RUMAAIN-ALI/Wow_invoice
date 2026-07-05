@@ -1,0 +1,1067 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  View, TouchableOpacity, StyleSheet, ScrollView,
+  Alert, ActivityIndicator, Switch, TextInput, Modal,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Appbar, Text, Surface, Divider } from 'react-native-paper';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
+import { HtmlPreview } from '../components/HtmlPreview';
+import { COLORS, MD3 } from '../constants';
+import { Button } from '../components/Button';
+import {
+  getActivePrintProfile,
+  listPrintProfiles,
+  createPrintProfile,
+  deletePrintProfile,
+  setDefaultPrintProfile,
+  updatePrintProfileById
+} from '../services/printProfileService';
+import { setTemplateId } from '../services/designStorage';
+import { SYSTEM_TEMPLATES } from '../invoice/templates/registry';
+import { PRESETS, ThemePreset } from '../invoice/themes/registry';
+import { resolveTheme } from '../invoice/themes/resolver';
+import { renderInvoice } from '../invoice/renderer/renderer';
+import { DocumentTheme } from '../invoice/themes/document-theme';
+import { BusinessPreferences } from '../invoice/preferences/business-preferences';
+import { PrintProfile } from '../types';
+import { generateThemePatch } from '../services/aiTemplateService';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Route = RouteProp<RootStackParamList, 'StyleStudio'>;
+
+// Curated Professional Color Palette
+const ACCENT_COLORS = [
+  { name: 'Saffron Orange', hex: '#F97316' },
+  { name: 'Modern Blue', hex: '#1D4ED8' },
+  { name: 'Royal Navy', hex: '#1E3A8A' },
+  { name: 'Forest Green', hex: '#16A34A' },
+  { name: 'Deep Purple', hex: '#7C3AED' },
+  { name: 'Charcoal Black', hex: '#111111' },
+  { name: 'Crimson Red', hex: '#DC2626' },
+  { name: 'Slate Grey', hex: '#475569' },
+];
+
+const FONTS = [
+  { label: 'Standard Sans', value: 'Arial' },
+  { label: 'Clean Inter', value: 'Inter' },
+  { label: 'Modern Roboto', value: 'Roboto' },
+  { label: 'Classic Serif', value: 'Georgia' },
+];
+
+// Imported PRESETS from registry
+
+// Mock invoice data used for on-the-fly previews
+const PREVIEW_INVOICE_DATA = {
+  recordNumber: 'INV-2026-0042',
+  recordCreatedAt: '29 June 2026',
+  documentTypeName: 'Tax Invoice',
+  customerName: 'Eco Farms Organic Ltd',
+  customerState: 'Karnataka',
+  items: [
+    { name: 'Organic Premium Fertilizers', qty: 50, price: 350, hsn: '3101', unit: 'BAG', gstPct: 5, discount: 0, taxableValue: 17500 },
+    { name: 'Eco Soil Booster Liquid', qty: 10, price: 1200, hsn: '3808', unit: 'LTR', gstPct: 18, discount: 0, taxableValue: 12000 }
+  ],
+  extraFields: [
+    { label: 'PO Number', value: 'PO-98765' },
+    { label: 'Challan Number', value: 'DC-00352' }
+  ],
+  sellerName: 'YourCompany Solutions Ltd',
+  sellerAddress: '101 Tech Hub, Block 4\nBengaluru, Karnataka - 560001',
+  sellerGstin: '29AAAAA1111A1Z1',
+  sellerState: 'Karnataka',
+  sellerPhone: '+91 9876543210',
+  sellerEmail: 'billing@yourcompany.in',
+  sellerUpiId: 'yourcompany@ybl',
+  sellerBankName: 'ICICI Bank Ltd',
+  sellerAccountNumber: '123456789012',
+  sellerIfsc: 'ICIC0001234'
+};
+
+const DEFAULT_BASE_THEME: DocumentTheme = {
+  meta: { version: 3, id: 'base', name: 'Base Default Theme', isSystem: true },
+  style: {
+    fontFamily: 'Arial',
+    accentColor: '#F97316',
+    density: 'comfortable',
+    borderRadius: 'rounded-md',
+  },
+  table: {
+    style: 'striped',
+    density: 'comfortable',
+  }
+};
+
+export function StyleStudioScreen() {
+  const navigation = useNavigation<Nav>();
+  const route = useRoute<Route>();
+  const { documentTypeId, documentTypeName } = route.params;
+
+  const [loading, setLoading] = useState(true);
+  const [profiles, setProfiles] = useState<PrintProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState('');
+  
+  // Customization draft states
+  const [templateId, setTemplateIdState] = useState('classic');
+  const [theme, setTheme] = useState<Partial<DocumentTheme>>({});
+  
+  // Default preferences if profile doesn't have any
+  const DEFAULT_PREFERENCES: BusinessPreferences = {
+    showLogo: true, logoSize: 'medium', showBusinessName: true, showAddress: true, showPhone: true,
+    showEmail: true, showGstin: true, showHsn: true, showUnit: true, showGstPct: true, showDiscount: true,
+    showPaymentSection: true, showQrCode: true, qrPosition: 'payment-details', showBankDetails: true,
+    showSignature: true, signaturePosition: 'bottom-right', paperSize: 'a4', currencyCode: 'INR', dateFormat: 'DD MMM YYYY'
+  };
+  const [preferences, setPreferences] = useState<BusinessPreferences>(DEFAULT_PREFERENCES);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Studio tabs: 'presets' | 'appearance' | 'branding' | 'columns' | 'profiles' | 'ai'
+  const [activeTab, setActiveTab] = useState<'presets' | 'appearance' | 'branding' | 'columns' | 'profiles' | 'ai'>('presets');
+  
+  // Section collapse states in Customize tab
+  const [showNewProfileModal, setShowNewProfileModal] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+
+  // AI Assistant states
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<{ confidence: number; explanation: string } | null>(null);
+
+  // Initial load
+  useEffect(() => {
+    loadProfileData();
+  }, [documentTypeId]);
+
+  const loadProfileData = async () => {
+    setLoading(true);
+    try {
+      const list = await listPrintProfiles();
+      const active = await getActivePrintProfile();
+      setProfiles(list);
+      setActiveProfileId(active.id);
+
+      const parsedTheme = active.themeOverridesJson ? JSON.parse(active.themeOverridesJson) : {};
+      const parsedPrefs = active.preferencesJson ? JSON.parse(active.preferencesJson) : { ...DEFAULT_PREFERENCES };
+      
+      setTemplateIdState(active.templateId || 'classic');
+      setTheme(parsedTheme);
+      setPreferences(parsedPrefs);
+      setIsDirty(false);
+    } catch (e) {
+      console.error('[StyleStudio] Error loading profiles:', e);
+      Alert.alert('Error', 'Could not load print profiles.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Resolve current preview HTML string dynamically (runs on every draft adjustment)
+  const previewHtml = useMemo(() => {
+    const template = SYSTEM_TEMPLATES[templateId] || SYSTEM_TEMPLATES['classic'];
+    
+    // Resolve draft preferences & overrides through validation pipeline
+    const resolved = resolveTheme(DEFAULT_BASE_THEME, theme, preferences, {
+      template,
+      locale: 'en-IN',
+      appVersion: '2.0.0',
+      themeVersion: 3
+    });
+    return renderInvoice(template, resolved.theme, PREVIEW_INVOICE_DATA);
+  }, [templateId, theme, preferences]);
+
+  const handleApplyAiPrompt = async () => {
+    const trimmedPrompt = aiPrompt.trim();
+    if (!trimmedPrompt) return;
+    
+    setAiLoading(true);
+    setAiResult(null);
+    
+    try {
+      const res = await generateThemePatch(trimmedPrompt, theme, preferences);
+      
+      // 1. Merge style overrides if present
+      if (res.patch.style) {
+        setTheme(prev => ({
+          ...prev,
+          style: {
+            ...(prev.style || DEFAULT_BASE_THEME.style),
+            ...res.patch.style
+          } as any
+        }));
+      }
+
+      // 2. Merge table overrides if present
+      if (res.patch.table) {
+        setTheme(prev => ({
+          ...prev,
+          table: {
+            ...(prev.table || DEFAULT_BASE_THEME.table),
+            ...res.patch.table
+          } as any
+        }));
+      }
+
+      // 3. Merge preferences if present
+      if (res.patch.preferences) {
+        setPreferences(prev => ({
+          ...prev,
+          ...res.patch.preferences
+        }));
+      }
+
+      setAiResult({
+        confidence: res.confidence,
+        explanation: res.explanation
+      });
+      setIsDirty(true);
+      setAiPrompt('');
+      Alert.alert('Style Patch Generated', 'The style has been compiled and updated in your preview.');
+    } catch (e: any) {
+      console.error('[StyleStudio] AI Prompt error:', e);
+      Alert.alert('AI Error', e.message || 'Could not parse style prompt.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Handle preset application
+  const applyPreset = (preset: ThemePreset) => {
+    setTemplateIdState(preset.templateId);
+    setTheme(preset.themeOverrides as any);
+    // Note: Since ThemePreset no longer strictly includes 'preferences' locally like the old array did, 
+    // we can either leave preferences unchanged, or merge if they were provided.
+    // For now, we only update theme styles and structure, leaving user preferences intact.
+    setIsDirty(true);
+  };
+
+  // Helper update states
+  const updateStyle = (styleUpdates: Partial<typeof DEFAULT_BASE_THEME.style>) => {
+    setTheme(prev => ({
+      ...prev,
+      style: {
+        ...(prev.style || DEFAULT_BASE_THEME.style),
+        ...styleUpdates
+      } as any
+    }));
+    setIsDirty(true);
+  };
+
+  const updateTable = (tableUpdates: Partial<typeof DEFAULT_BASE_THEME.table>) => {
+    setTheme(prev => ({
+      ...prev,
+      table: {
+        ...(prev.table || DEFAULT_BASE_THEME.table),
+        ...tableUpdates
+      } as any
+    }));
+    setIsDirty(true);
+  };
+
+  const updatePreference = (key: keyof BusinessPreferences, val: any) => {
+    setPreferences(prev => ({
+      ...prev,
+      [key]: val
+    }));
+    setIsDirty(true);
+  };
+
+  // Named profile actions
+  const handleSave = async () => {
+    try {
+      const themeStr = JSON.stringify(theme);
+      const prefsStr = JSON.stringify(preferences);
+      
+      await updatePrintProfileById(activeProfileId, {
+        templateId: templateId,
+        themeOverridesJson: themeStr,
+        preferencesJson: prefsStr,
+        showLogo: preferences.showLogo,
+        showGstin: preferences.showGstin,
+        showUpi: preferences.showQrCode,
+        showSignature: preferences.showSignature,
+        paperWidth: preferences.paperSize,
+      });
+
+      // Commit to document type configuration storage
+      await setTemplateId(documentTypeId, templateId);
+
+      setIsDirty(false);
+      Alert.alert('Saved Successfully', 'The layout style has been saved.');
+      loadProfileData();
+    } catch {
+      Alert.alert('Error', 'Failed to save settings.');
+    }
+  };
+
+  const handleCreateProfile = async () => {
+    const trimmed = newProfileName.trim();
+    if (!trimmed) return;
+    try {
+      const newProfile = await createPrintProfile(
+        trimmed,
+        templateId,
+        JSON.stringify(theme),
+        JSON.stringify(preferences)
+      );
+      await setDefaultPrintProfile(newProfile.id);
+      setShowNewProfileModal(false);
+      setNewProfileName('');
+      loadProfileData();
+      Alert.alert('Profile Created', `"${trimmed}" is now set as the active style profile.`);
+    } catch {
+      Alert.alert('Error', 'Could not create style profile.');
+    }
+  };
+
+  const handleSwitchProfile = async (id: string) => {
+    if (isDirty) {
+      Alert.alert(
+        'Unsaved Changes',
+        'You have unsaved changes. Discard and switch profile?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: () => switchProfile(id) }
+        ]
+      );
+    } else {
+      switchProfile(id);
+    }
+  };
+
+  const switchProfile = async (id: string) => {
+    try {
+      await setDefaultPrintProfile(id);
+      loadProfileData();
+    } catch {
+      Alert.alert('Error', 'Failed to change active profile.');
+    }
+  };
+
+  const handleDeleteProfile = async (id: string, name: string) => {
+    Alert.alert(
+      'Delete Profile',
+      `Are you sure you want to delete the named style "${name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deletePrintProfile(id);
+              loadProfileData();
+            } catch {
+              Alert.alert('Error', 'Could not delete style profile.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Reset Operations
+  const handleResetSection = (section: 'appearance' | 'branding' | 'table' | 'all') => {
+    Alert.alert(
+      'Confirm Reset',
+      `Revert ${section === 'all' ? 'everything' : 'these section settings'} to default settings?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            if (section === 'appearance') {
+              setTheme(prev => ({ ...prev, style: undefined, table: undefined }));
+            } else if (section === 'branding') {
+              setPreferences(prev => ({
+                ...prev,
+                showLogo: true,
+                logoSize: 'medium',
+                showQrCode: true,
+                showSignature: true,
+                qrPosition: 'payment-details',
+                signaturePosition: 'bottom-right'
+              }));
+            } else if (section === 'table') {
+              setPreferences(prev => ({
+                ...prev,
+                showHsn: true,
+                showUnit: true,
+                showGstPct: true,
+                showDiscount: true
+              }));
+            } else {
+              setTheme({});
+              setPreferences(PRESETS[0].preferences as any);
+            }
+            setIsDirty(true);
+          }
+        }
+      ]
+    );
+  };
+
+  const currentAccent = theme.style?.accentColor ?? DEFAULT_BASE_THEME.style.accentColor;
+  const currentFont = theme.style?.fontFamily ?? DEFAULT_BASE_THEME.style.fontFamily;
+  const currentDensity = theme.style?.density ?? DEFAULT_BASE_THEME.style.density;
+  const currentRadius = theme.style?.borderRadius ?? DEFAULT_BASE_THEME.style.borderRadius;
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+      {/* App Bar Header */}
+      <Appbar.Header style={styles.appbar} elevated>
+        <Appbar.BackAction onPress={() => {
+          if (isDirty) {
+            Alert.alert('Discard Changes', 'Exit Style Studio and lose unsaved changes?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Exit', style: 'destructive', onPress: () => navigation.goBack() }
+            ]);
+          } else {
+            navigation.goBack();
+          }
+        }} color={COLORS.primary} />
+        <Appbar.Content
+          title="Document Style Studio"
+          titleStyle={styles.appbarTitle}
+          subtitle={isDirty ? 'Editing...' : 'Saved'}
+          subtitleStyle={isDirty ? styles.appbarSubtitleDirty : styles.appbarSubtitleSaved}
+        />
+        <Appbar.Action
+          icon="save-outline"
+          onPress={handleSave}
+          disabled={!isDirty}
+          color={isDirty ? COLORS.primary : COLORS.disabled}
+        />
+      </Appbar.Header>
+
+      {/* Top half: Live preview webview */}
+      <View style={styles.previewBox}>
+        {loading ? (
+          <View style={styles.previewPlaceholder}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={{ marginTop: 12, color: COLORS.textSecondary }}>Resolving styles...</Text>
+          </View>
+        ) : (
+          <HtmlPreview html={previewHtml} style={styles.previewWebview} />
+        )}
+      </View>
+
+      {/* Bottom half: Scrollable customizations */}
+      <View style={styles.panelContainer}>
+        {/* Tab Selection Row */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsRow} contentContainerStyle={styles.tabsContent}>
+          {[
+            { id: 'presets', label: 'Presets', icon: 'sparkles-outline' },
+            { id: 'ai', label: 'AI Assistant', icon: 'chatbox-ellipses-outline' },
+            { id: 'appearance', label: 'Appearance', icon: 'color-palette-outline' },
+            { id: 'branding', label: 'Branding', icon: 'image-outline' },
+            { id: 'columns', label: 'Table Columns', icon: 'grid-outline' },
+            { id: 'profiles', label: 'Named Styles', icon: 'bookmark-outline' }
+          ].map(tab => {
+            const isSel = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.tabButton, isSel && styles.tabButtonActive]}
+                onPress={() => setActiveTab(tab.id as any)}
+              >
+                <Ionicons name={tab.icon as any} size={15} color={isSel ? '#fff' : COLORS.textSecondary} />
+                <Text style={[styles.tabLabel, isSel && { color: '#fff' }]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <Divider style={{ backgroundColor: COLORS.borderStrong }} />
+
+        {/* Tab Panels */}
+        <ScrollView style={styles.panelScroll} showsVerticalScrollIndicator={false}>
+          
+          {/* TAB 1: PRESETS */}
+          {activeTab === 'presets' && (
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionHeading}>Choose a Layout Preset</Text>
+              <Text style={styles.sectionDescription}>Apply curated visual guidelines built for your business sector.</Text>
+              <View style={styles.presetsGrid}>
+                {PRESETS.map(p => {
+                  const accent = p.themeOverrides?.style?.accentColor || '#F97316';
+                  
+                  // Render a distinct, aesthetically pleasing mini-preview based on the template ID
+                  const renderThumbnail = () => {
+                    const isDark = p.templateId === 'bold';
+                    const bg = isDark ? '#1F2937' : '#fff';
+                    const text1 = isDark ? '#D1D5DB' : '#6b7280';
+                    const text2 = isDark ? '#9CA3AF' : '#9ca3af';
+                    const brand = accent;
+                    
+                    const MiniText = ({ t, size = 4, color = text1, weight = 'normal', style = {} }: any) => (
+                      <Text style={[{ fontSize: size, color, fontWeight: weight as any, lineHeight: size * 1.2 }, style]}>
+                        {t}
+                      </Text>
+                    );
+
+                    if (p.templateId === 'modern') {
+                      return (
+                        <View style={{ flex: 1, backgroundColor: bg, borderRadius: 6, overflow: 'hidden' }}>
+                          <View style={{ height: 16, backgroundColor: brand, flexDirection: 'row', justifyContent: 'space-between', padding: 4, alignItems: 'center' }}>
+                            <MiniText t="INVOICE" size={5} color="#fff" weight="bold" />
+                            <MiniText t="#1001" size={4} color="rgba(255,255,255,0.7)" />
+                          </View>
+                          <View style={{ padding: 4 }}>
+                            <MiniText t="Total Due" size={3} color={text2} style={{ marginTop: 2 }} />
+                            <MiniText t="$1,200" size={5} color={text1} weight="bold" />
+                            <View style={{ height: 10, backgroundColor: '#F3F4F6', borderRadius: 2, marginTop: 4, borderWidth: 1, borderColor: '#E5E7EB', padding: 2 }}>
+                               <MiniText t="Item 1       $1,200" size={2.5} color={text2} />
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    }
+                    if (p.templateId === 'classic') {
+                      return (
+                        <View style={{ flex: 1, backgroundColor: bg, borderRadius: 6, padding: 6 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <View style={{ width: 14, height: 14, backgroundColor: text2, borderRadius: 2, alignItems: 'center', justifyContent: 'center' }}>
+                              <MiniText t="Logo" size={3} color="#fff" />
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <MiniText t="INVOICE" size={4} color={brand} weight="bold" />
+                              <MiniText t="#1001" size={3} color={text2} />
+                            </View>
+                          </View>
+                          <View style={{ height: 1, backgroundColor: text2, opacity: 0.3, marginBottom: 4 }} />
+                          <View style={{ height: 12, backgroundColor: '#fff', borderRadius: 2, borderWidth: 1, borderColor: text2, opacity: 0.5, padding: 2 }}>
+                            <MiniText t="Qty   Desc   Total" size={2.5} color={text1} />
+                          </View>
+                        </View>
+                      );
+                    }
+                    if (p.templateId === 'minimal') {
+                      return (
+                        <View style={{ flex: 1, backgroundColor: bg, borderRadius: 6, padding: 8 }}>
+                          <MiniText t="INVOICE" size={5} color={text1} weight="300" style={{ marginBottom: 4 }} />
+                          <MiniText t="Billed to: Client" size={3} color={text2} style={{ marginBottom: 2 }} />
+                          <MiniText t="Date: Oct 12" size={3} color={text2} style={{ marginBottom: 6 }} />
+                          <View style={{ height: 1, width: '100%', backgroundColor: '#F3F4F6', marginBottom: 4 }} />
+                          <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                            <MiniText t="Total: $1,200" size={4} color={text1} weight="500" />
+                          </View>
+                        </View>
+                      );
+                    }
+                    if (p.templateId === 'bold') {
+                      return (
+                        <View style={{ flex: 1, backgroundColor: bg, borderRadius: 6, padding: 6 }}>
+                          <View style={{ backgroundColor: brand, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 2, marginBottom: 6 }}>
+                            <MiniText t="INVOICE" size={4} color="#fff" weight="bold" />
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 4, marginBottom: 6 }}>
+                            <View style={{ flex: 1, backgroundColor: '#374151', borderRadius: 3, padding: 2 }}>
+                               <MiniText t="Due" size={3} color="#9CA3AF" />
+                               <MiniText t="$1.2k" size={4} color="#D1D5DB" />
+                            </View>
+                            <View style={{ flex: 1, backgroundColor: '#374151', borderRadius: 3, padding: 2 }}>
+                               <MiniText t="Date" size={3} color="#9CA3AF" />
+                               <MiniText t="Oct 12" size={4} color="#D1D5DB" />
+                            </View>
+                          </View>
+                          <MiniText t="Thank you!" size={3} color={brand} style={{ alignSelf: 'flex-end' }} />
+                        </View>
+                      );
+                    }
+                    // Fallback generic but nice thumbnail
+                    return (
+                      <View style={{ flex: 1, backgroundColor: bg, borderRadius: 6, padding: 6 }}>
+                        <MiniText t="INVOICE" size={5} color={brand} weight="bold" style={{ marginBottom: 2 }} />
+                        <MiniText t="Amount Due" size={3} color={text2} />
+                        <MiniText t="$1,200" size={4} color={text1} weight="bold" style={{ marginBottom: 4 }} />
+                        <View style={{ height: 12, backgroundColor: '#F9FAFB', borderRadius: 2, borderWidth: 1, borderColor: text1, opacity: 0.3 }} />
+                      </View>
+                    );
+                  };
+
+                  return (
+                  <TouchableOpacity key={p.id} style={styles.presetCard} onPress={() => applyPreset(p)} activeOpacity={0.8}>
+                    <View style={{ height: 72, backgroundColor: p.templateId === 'bold' ? '#111827' : '#F9FAFB', borderRadius: 8, marginBottom: 12, padding: 6, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 }}>
+                      {renderThumbnail()}
+                    </View>
+                    <Text style={[styles.presetName, { marginBottom: 4 }]}>{p.name}</Text>
+                    <Text style={styles.presetDesc}>{p.description}</Text>
+                  </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* TAB: AI ASSISTANT */}
+          {activeTab === 'ai' && (
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionHeading}>AI Layout Assistant</Text>
+              <Text style={styles.sectionDescription}>Prompt in simple language to dynamically patch the visual style overrides.</Text>
+              
+              <View style={styles.aiInputCard}>
+                <TextInput
+                  style={styles.aiTextInput}
+                  value={aiPrompt}
+                  onChangeText={setAiPrompt}
+                  placeholder="e.g. Make it compact with navy blue highlights and rounded-lg card corners."
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  editable={!aiLoading}
+                />
+                
+                <TouchableOpacity
+                  style={[styles.aiSubmitBtn, (!aiPrompt.trim() || aiLoading) && styles.aiSubmitBtnDisabled]}
+                  onPress={handleApplyAiPrompt}
+                  disabled={!aiPrompt.trim() || aiLoading}
+                >
+                  {aiLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles" size={16} color="#fff" />
+                      <Text style={styles.aiSubmitBtnText}>Apply AI Prompt</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {aiResult && (
+                <Surface style={styles.aiResultCard} elevation={2}>
+                  <View style={styles.aiResultHeader}>
+                    <View style={styles.aiResultBadge}>
+                      <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
+                      <Text style={styles.aiResultBadgeText}>Confidence: {Math.round(aiResult.confidence * 100)}%</Text>
+                    </View>
+                    <Text style={styles.aiResultHeaderLabel}>AI Decision Patch</Text>
+                  </View>
+                  <Text style={styles.aiResultExplanation}>{aiResult.explanation}</Text>
+                </Surface>
+              )}
+            </View>
+          )}
+
+          {/* TAB 2: APPEARANCE */}
+          {activeTab === 'appearance' && (
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderWithAction}>
+                <Text style={styles.sectionHeading}>Aesthetics & Style</Text>
+                <TouchableOpacity onPress={() => handleResetSection('appearance')}>
+                  <Text style={styles.resetLink}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Accent Color Circle List */}
+              <Text style={styles.inputLabel}>Brand Accent Color</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.colorsRow}>
+                {ACCENT_COLORS.map(c => {
+                  const isSel = currentAccent === c.hex;
+                  return (
+                    <TouchableOpacity
+                      key={c.hex}
+                      style={[styles.colorCircle, { backgroundColor: c.hex }, isSel && styles.colorCircleSelected]}
+                      onPress={() => updateStyle({ accentColor: c.hex })}
+                    >
+                      {isSel && <Ionicons name="checkmark" size={16} color="#fff" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Font Selection */}
+              <Text style={styles.inputLabel}>Typography Font Style</Text>
+              <View style={styles.optionsRow}>
+                {FONTS.map(f => {
+                  const isSel = currentFont === f.value;
+                  return (
+                    <TouchableOpacity
+                      key={f.value}
+                      style={[styles.optionBadge, isSel && styles.optionBadgeActive]}
+                      onPress={() => updateStyle({ fontFamily: f.value as any })}
+                    >
+                      <Text style={[styles.optionBadgeText, isSel && { color: '#fff' }]}>{f.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Spacing density */}
+              <Text style={styles.inputLabel}>Spacing Density</Text>
+              <View style={styles.optionsRow}>
+                {[
+                  { value: 'compact', label: 'Compact' },
+                  { value: 'comfortable', label: 'Normal' },
+                  { value: 'spacious', label: 'Spacious' }
+                ].map(d => {
+                  const isSel = currentDensity === d.value;
+                  return (
+                    <TouchableOpacity
+                      key={d.value}
+                      style={[styles.optionBadge, isSel && styles.optionBadgeActive]}
+                      onPress={() => updateStyle({ density: d.value as any })}
+                    >
+                      <Text style={[styles.optionBadgeText, isSel && { color: '#fff' }]}>{d.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Corner Styles */}
+              <Text style={styles.inputLabel}>Corner Rounding Style</Text>
+              <View style={styles.optionsRow}>
+                {[
+                  { value: 'none', label: 'Sharp' },
+                  { value: 'rounded-sm', label: 'Small' },
+                  { value: 'rounded-md', label: 'Medium' },
+                  { value: 'rounded-lg', label: 'Large' }
+                ].map(r => {
+                  const isSel = currentRadius === r.value;
+                  return (
+                    <TouchableOpacity
+                      key={r.value}
+                      style={[styles.optionBadge, isSel && styles.optionBadgeActive]}
+                      onPress={() => updateStyle({ borderRadius: r.value as any })}
+                    >
+                      <Text style={[styles.optionBadgeText, isSel && { color: '#fff' }]}>{r.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* TAB 3: BRANDING */}
+          {activeTab === 'branding' && (
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderWithAction}>
+                <Text style={styles.sectionHeading}>Business Branding Assets</Text>
+                <TouchableOpacity onPress={() => handleResetSection('branding')}>
+                  <Text style={styles.resetLink}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>Display Logo</Text>
+                  <Text style={styles.controlDesc}>Render your uploaded business logo</Text>
+                </View>
+                <Switch
+                  value={preferences.showLogo}
+                  onValueChange={v => updatePreference('showLogo', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+
+              {preferences.showLogo && (
+                <View style={styles.nestedBox}>
+                  <Text style={styles.inputLabel}>Logo Dimensions Scale</Text>
+                  <View style={styles.optionsRow}>
+                    {[
+                      { value: 'small', label: 'Small' },
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'large', label: 'Large' }
+                    ].map(s => {
+                      const isSel = preferences.logoSize === s.value;
+                      return (
+                        <TouchableOpacity
+                          key={s.value}
+                          style={[styles.optionBadge, isSel && styles.optionBadgeActive]}
+                          onPress={() => updatePreference('logoSize', s.value)}
+                        >
+                          <Text style={[styles.optionBadgeText, isSel && { color: '#fff' }]}>{s.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>UPI ID / Pay QR</Text>
+                  <Text style={styles.controlDesc}>Print UPI address block for payments</Text>
+                </View>
+                <Switch
+                  value={preferences.showQrCode}
+                  onValueChange={v => updatePreference('showQrCode', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>Signature Space</Text>
+                  <Text style={styles.controlDesc}>Include authorized signatory label</Text>
+                </View>
+                <Switch
+                  value={preferences.showSignature}
+                  onValueChange={v => updatePreference('showSignature', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+            </View>
+          )}
+
+          {/* TAB 4: TABLE COLUMNS */}
+          {activeTab === 'columns' && (
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderWithAction}>
+                <Text style={styles.sectionHeading}>Table Columns Visibility</Text>
+                <TouchableOpacity onPress={() => handleResetSection('table')}>
+                  <Text style={styles.resetLink}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>Show HSN Code</Text>
+                  <Text style={styles.controlDesc}>Render standard HSN digits column</Text>
+                </View>
+                <Switch
+                  value={preferences.showHsn}
+                  onValueChange={v => updatePreference('showHsn', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>Show Quantity Unit</Text>
+                  <Text style={styles.controlDesc}>Include units column (e.g. PCS, KGS)</Text>
+                </View>
+                <Switch
+                  value={preferences.showUnit}
+                  onValueChange={v => updatePreference('showUnit', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>Show GST Percentage</Text>
+                  <Text style={styles.controlDesc}>Display per-item tax rate column</Text>
+                </View>
+                <Switch
+                  value={preferences.showGstPct}
+                  onValueChange={v => updatePreference('showGstPct', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+
+              <View style={styles.controlRow}>
+                <View style={styles.controlInfo}>
+                  <Text style={styles.controlLabel}>Show Discount Column</Text>
+                  <Text style={styles.controlDesc}>Display item discount deductions</Text>
+                </View>
+                <Switch
+                  value={preferences.showDiscount}
+                  onValueChange={v => updatePreference('showDiscount', v)}
+                  trackColor={{ true: COLORS.primary }}
+                />
+              </View>
+            </View>
+          )}
+
+          {/* TAB 5: NAMED STYLE PROFILES */}
+          {activeTab === 'profiles' && (
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderWithAction}>
+                <Text style={styles.sectionHeading}>Style Profile Library</Text>
+                <TouchableOpacity onPress={() => setShowNewProfileModal(true)}>
+                  <View style={styles.createBtnInline}>
+                    <Ionicons name="add-circle" size={16} color={COLORS.primary} />
+                    <Text style={styles.createBtnInlineText}>Save New</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.sectionDescription}>Save specific layouts to switch between Retail, Wholesale, or Premium receipts.</Text>
+
+              {profiles.map(p => {
+                const isActive = activeProfileId === p.id;
+                return (
+                  <View key={p.id} style={[styles.profileCard, isActive && styles.profileCardActive]}>
+                    <View style={styles.profileCardLeft}>
+                      <Ionicons
+                        name={isActive ? "checkmark-circle" : "bookmark-outline"}
+                        size={20}
+                        color={isActive ? COLORS.primary : COLORS.textSecondary}
+                      />
+                      <View style={{ marginLeft: 12 }}>
+                        <Text style={[styles.profileCardName, isActive && { color: COLORS.primary, fontWeight: '700' }]}>{p.name}</Text>
+                        <Text style={styles.profileCardMeta}>{isActive ? 'Currently Active' : 'Saved Layout Profile'}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileCardActions}>
+                      {!isActive && (
+                        <TouchableOpacity style={styles.profileActBtn} onPress={() => handleSwitchProfile(p.id)}>
+                          <Text style={styles.profileSwitchText}>Activate</Text>
+                        </TouchableOpacity>
+                      )}
+                      {!p.isDefault && (
+                        <TouchableOpacity style={styles.profileActBtn} onPress={() => handleDeleteProfile(p.id, p.name)}>
+                          <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          <View style={{ height: 48 }} />
+        </ScrollView>
+      </View>
+
+      {/* Save Trigger Floating Bar */}
+      {isDirty && (
+        <Surface style={styles.saveFloatingBar} elevation={4}>
+          <Text style={styles.dirtyStateText}>You have unsaved changes</Text>
+          <View style={styles.dirtyStateBtnRow}>
+            <TouchableOpacity style={styles.discardBtn} onPress={loadProfileData}>
+              <Text style={styles.discardBtnText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+              <Text style={styles.saveBtnText}>Save Style</Text>
+            </TouchableOpacity>
+          </View>
+        </Surface>
+      )}
+
+      {/* Save Named Profile Modal Dialog */}
+      <Modal visible={showNewProfileModal} animationType="slide" transparent>
+        <View style={styles.modalBg}>
+          <Surface style={styles.modalContainer} elevation={5}>
+            <Text style={styles.modalTitle}>Save as Named Style</Text>
+            <Text style={styles.modalDesc}>Give this configuration set a name (e.g. Kirana Retail, Premium Bill).</Text>
+            
+            <TextInput
+              style={styles.modalInput}
+              value={newProfileName}
+              onChangeText={setNewProfileName}
+              placeholder="e.g. Kirana Retail Layout"
+              placeholderTextColor={COLORS.textMuted}
+              maxLength={40}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => { setShowNewProfileModal(false); setNewProfileName(''); }}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmit, !newProfileName.trim() && { opacity: 0.5 }]}
+                onPress={handleCreateProfile}
+                disabled={!newProfileName.trim()}
+              >
+                <Text style={styles.modalSubmitText}>Save Style</Text>
+              </TouchableOpacity>
+            </View>
+          </Surface>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe:               { flex: 1, backgroundColor: COLORS.background },
+  appbar:             { backgroundColor: COLORS.surface },
+  appbarTitle:        { fontSize: 18, fontWeight: '700', color: COLORS.text },
+  appbarSubtitleSaved:{ fontSize: 11, color: COLORS.textSecondary },
+  appbarSubtitleDirty:{ fontSize: 11, color: COLORS.danger, fontWeight: '600' },
+  
+  // Preview
+  previewBox:         { height: 320, backgroundColor: '#e2e8f0', borderBottomWidth: 1, borderBottomColor: COLORS.borderStrong },
+  previewPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  previewWebview:     { flex: 1 },
+
+  // Customize Panel
+  panelContainer:     { flex: 1, backgroundColor: COLORS.surface },
+  tabsRow:            { maxHeight: 48, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  tabsContent:        { paddingHorizontal: 12, alignItems: 'center', gap: 8 },
+  tabButton:          { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20 },
+  tabButtonActive:    { backgroundColor: COLORS.primary },
+  tabLabel:           { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
+
+  panelScroll:        { flex: 1, padding: 16 },
+  sectionContainer:   { flex: 1 },
+  sectionHeading:     { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  sectionDescription: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 16 },
+  sectionHeaderWithAction: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  resetLink:          { fontSize: 13, fontWeight: '600', color: COLORS.danger },
+
+  // Presets
+  presetsGrid:        { gap: 10, marginTop: 4 },
+  presetCard:         { backgroundColor: COLORS.background, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+  presetHeader:       { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  presetName:         { fontSize: 13.5, fontWeight: '700', color: COLORS.text },
+  presetDesc:         { fontSize: 11.5, color: COLORS.textSecondary },
+
+  // Custom Controls
+  inputLabel:         { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 16, marginBottom: 8 },
+  colorsRow:          { gap: 10, paddingVertical: 4 },
+  colorCircle:        { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  colorCircleSelected:{ borderColor: '#E2E8F0', transform: [{ scale: 1.1 }] },
+  
+  optionsRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 4 },
+  optionBadge:        { backgroundColor: COLORS.background, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border },
+  optionBadgeActive:  { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  optionBadgeText:    { fontSize: 12.5, fontWeight: '600', color: COLORS.textSecondary },
+
+  controlRow:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  controlInfo:        { flex: 1, marginRight: 16 },
+  controlLabel:       { fontSize: 13.5, fontWeight: '600', color: COLORS.text },
+  controlDesc:        { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  nestedBox:          { backgroundColor: COLORS.background, padding: 12, borderRadius: 12, marginTop: 4, marginBottom: 8 },
+
+  // Profiles Tab
+  createBtnInline:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  createBtnInlineText:{ fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  profileCard:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.background, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
+  profileCardActive:  { borderColor: COLORS.primary, backgroundColor: '#FFF7ED' },
+  profileCardLeft:    { flexDirection: 'row', alignItems: 'center' },
+  profileCardName:    { fontSize: 13, fontWeight: '600', color: COLORS.text },
+  profileCardMeta:    { fontSize: 10.5, color: COLORS.textSecondary, marginTop: 2 },
+  profileCardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  profileActBtn:      { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  profileSwitchText:  { fontSize: 12, fontWeight: '700', color: COLORS.primary },
+
+  // Floating Save Bar
+  saveFloatingBar:    { position: 'absolute', bottom: 16, left: 16, right: 16, backgroundColor: COLORS.surface, padding: 14, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderStyle: 'solid', borderWidth: 1, borderColor: COLORS.borderStrong },
+  dirtyStateText:     { fontSize: 12.5, fontWeight: '600', color: COLORS.textSecondary },
+  dirtyStateBtnRow:   { flexDirection: 'row', gap: 8 },
+  discardBtn:         { backgroundColor: COLORS.background, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
+  discardBtnText:     { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  saveBtn:            { backgroundColor: COLORS.primary, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 },
+  saveBtnText:        { fontSize: 12, fontWeight: '700', color: '#fff' },
+
+  // Modal Dialog
+  modalBg:            { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContainer:     { width: '100%', backgroundColor: COLORS.surface, borderRadius: 20, padding: 20, gap: 12 },
+  modalTitle:         { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  modalDesc:          { fontSize: 12.5, color: COLORS.textSecondary },
+  modalInput:         { borderWidth: 1.5, borderColor: COLORS.borderStrong, borderRadius: 12, padding: 12, fontSize: 14, color: COLORS.text, marginVertical: 8 },
+  modalButtons:       { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 4 },
+  modalCancel:        { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12 },
+  modalCancelText:    { fontSize: 13.5, fontWeight: '700', color: COLORS.textSecondary },
+  modalSubmit:        { backgroundColor: COLORS.primary, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12 },
+  modalSubmitText:    { fontSize: 13.5, fontWeight: '700', color: '#fff' },
+
+  // AI Assistant Styles
+  aiInputCard:        { padding: 14, backgroundColor: COLORS.background, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, gap: 12, marginBottom: 16 },
+  aiTextInput:        { borderWidth: 1, borderColor: COLORS.borderStrong, backgroundColor: '#fff', borderRadius: 8, padding: 10, fontSize: 13.5, color: COLORS.text, textAlignVertical: 'top', minHeight: 70 },
+  aiSubmitBtn:        { backgroundColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, height: 44 },
+  aiSubmitBtnDisabled:{ opacity: 0.6 },
+  aiSubmitBtnText:    { fontSize: 13, fontWeight: '700', color: '#fff' },
+  aiResultCard:       { backgroundColor: '#F0FDF4', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7', marginTop: 12 },
+  aiResultHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  aiResultBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DCFCE7', paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4 },
+  aiResultBadgeText:  { fontSize: 10.5, fontWeight: '700', color: '#15803D' },
+  aiResultHeaderLabel:{ fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  aiResultExplanation:{ fontSize: 12.5, color: '#166534', lineHeight: 1.5 },
+});
