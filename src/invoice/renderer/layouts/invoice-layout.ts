@@ -1,28 +1,26 @@
-import { TemplateDefinition } from '../templates/template-definition';
-import { ResolvedTheme } from '../themes/resolved-theme';
-import { InvoiceData } from './invoice-data';
-import { renderHeader } from './header';
-import { renderItemsTable } from './items-table';
-import { renderTotals } from './totals';
-import { renderPaymentBlock, renderExtrasBlock, renderSignatureBlock } from './footer';
-import { FORMAL_IDS, COMPACT_IDS, BLANK_IDS } from './shapes';
-import { CATEGORY_LAYOUTS } from './layouts';
+import { TemplateDefinition } from '../../templates/template-definition';
+import { ResolvedTheme } from '../../themes/resolved-theme';
+import { InvoiceData } from '../invoice-data';
+import { renderHeader } from '../header';
+import { renderItemsTable } from '../items-table';
+import { renderTotals } from '../totals';
+import { renderPaymentBlock, renderExtrasBlock, renderSignatureBlock } from '../footer';
 
 /**
- * renderInvoice: Pure function that compiles template HTML.
- * Takes the Template layout definition, Resolved Theme variables, and Invoice data.
- * Does zero side effects, zero DB lookups, and compiles deterministically.
+ * renderInvoiceLayout: the `invoice` TemplateCategory — GST Invoice, Proforma
+ * Invoice, and the generic Classic/Modern/Minimal/Letterhead base designs.
+ * Compliance-critical: GSTIN band, HSN column, CGST/SGST/IGST tax summary,
+ * and Place of Supply (customer state, not seller state — see header.ts).
+ *
+ * Ported as-is from the former per-id branches in renderer.ts so output is
+ * unchanged; this is the pilot extraction proving the category-dispatch
+ * architecture before the other 6 categories are migrated the same way.
  */
-export function renderInvoice(
+export function renderInvoiceLayout(
   template: TemplateDefinition,
   theme: ResolvedTheme,
   data: InvoiceData
 ): string {
-  const categoryLayout = CATEGORY_LAYOUTS[template.category];
-  if (categoryLayout) {
-    return categoryLayout(template, theme, data);
-  }
-
   const brand = theme.accentColor;
 
   if (template.id === 'modern') {
@@ -123,7 +121,7 @@ export function renderInvoice(
 </html>`;
   }
 
-  if (COMPACT_IDS.includes(template.id)) {
+  if (template.id === 'gst_compact') {
     const fontStr = `'${theme.fontFamily}',Arial,Helvetica,sans-serif`;
 
     return `<!DOCTYPE html>
@@ -162,7 +160,7 @@ export function renderInvoice(
 </html>`;
   }
 
-  if (FORMAL_IDS.includes(template.id)) {
+  if (template.id === 'letterhead' || template.id === 'gst_formal' || template.id === 'professional_proforma') {
     const fontStr = theme.fontFamily === 'Georgia'
       ? "Georgia,'Times New Roman',serif"
       : `'${theme.fontFamily}',Georgia,'Times New Roman',serif`;
@@ -211,44 +209,7 @@ export function renderInvoice(
 </html>`;
   }
 
-  if (template.id === 'thermal') {
-    return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0;font-style:normal}
-  body{font-family:'Courier New',Consolas,monospace;font-size:${Math.max(theme.fontSizeBasePx, 13)}px;color:#111;background:#fff}
-  .page{max-width:302px;margin:0 auto;padding:12px 10px}
-  .thm-hdr{text-align:center}
-  .thm-hdr .biz-name{font-size:16px;font-weight:700;margin-bottom:4px}
-  .thm-hdr .biz-det{font-size:11px;color:#333;line-height:1.5}
-  .thm-rule{text-align:center;font-size:11px;color:#555;margin:8px 0;letter-spacing:1px}
-  .thm-meta{font-size:12px;line-height:1.7}
-  .thm-items{margin:8px 0}
-  .thm-item-row{margin-bottom:6px}
-  .thm-item-name{font-size:12.5px;font-weight:600}
-  .thm-item-line{display:flex;justify-content:space-between;font-size:12px;color:#333}
-  .foot{margin-top:16px;text-align:center}
-  .thanks{font-size:12px;color:#333;font-weight:600}
-  .disc{text-align:center;margin-top:14px;font-size:9.5px;color:#999}
-</style>
-</head>
-<body><div class="page">
-  ${renderHeader(template.id, theme, data)}
-  ${data.items.length ? renderItemsTable(template.id, theme, data.items) : ''}
-  <div class="thm-rule">- - - - - - - - - - - - - - - - - - - -</div>
-  ${data.items.length ? renderTotals(theme, data.items, data.sellerState, data.customerState, false, template.id) : ''}
-  <div class="foot">
-    <div class="thanks">${theme.footerText !== undefined && theme.footerText !== null ? theme.footerText : 'Thank you for your business!'}</div>
-  </div>
-  <div class="disc">This is a computer-generated document.</div>
-</div></body>
-</html>`;
-  }
-
-  if (BLANK_IDS.includes(template.id)) {
+  if (template.id === 'minimal') {
     const fontStr = theme.fontFamily === 'Georgia'
       ? "Georgia,'Times New Roman',serif"
       : `'${theme.fontFamily}',Georgia,'Times New Roman',serif`;
@@ -294,7 +255,7 @@ export function renderInvoice(
 </html>`;
   }
 
-  // Classic design (default layout)
+  // classic, standard_proforma — the generic two-column default layout
   const fontStr = theme.fontFamily === 'Arial'
     ? "Arial,Helvetica,sans-serif"
     : `'${theme.fontFamily}',Arial,Helvetica,sans-serif`;

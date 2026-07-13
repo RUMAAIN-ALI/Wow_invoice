@@ -42,6 +42,8 @@ const mockTemplateSupportsAll: TemplateDefinition = {
   id: 'classic_pro',
   name: 'Classic Pro Template',
   description: 'A layout that supports all features',
+  category: 'invoice',
+  theme: 'corporate',
   capabilities: {
     branding: { logo: true, qrCode: true, signature: true },
     taxation: { hsnColumn: true, gstBreakup: true, taxSummary: true },
@@ -54,6 +56,8 @@ const mockTemplateMinimal: TemplateDefinition = {
   id: 'classic_minimalist',
   name: 'Minimalist Layout',
   description: 'Limited layout with no branding assets or GST summaries',
+  category: 'invoice',
+  theme: 'minimal',
   capabilities: {
     branding: { logo: false, qrCode: false, signature: false },
     taxation: { hsnColumn: false, gstBreakup: false, taxSummary: false },
