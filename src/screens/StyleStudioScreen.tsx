@@ -34,12 +34,15 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
   runOnJS,
 } from 'react-native-reanimated';
 
 import { RootStackParamList } from '../navigation/types';
 import { HtmlPreview } from '../components/HtmlPreview';
+import { ColorPickerPanel } from '../components/ColorPickerPanel';
 import { cardShadow } from '../utils/shadow';
+import { PRESETS, ThemePreset } from '../invoice/themes/registry';
 import {
   getActivePrintProfile,
   listPrintProfiles,
@@ -48,8 +51,8 @@ import {
   updatePrintProfileById,
 } from '../services/printProfileService';
 import { setTemplateId } from '../services/designStorage';
+import { getBusinessSettings } from '../services/businessService';
 import { SYSTEM_TEMPLATES } from '../invoice/templates/registry';
-import { PRESETS, ThemePreset } from '../invoice/themes/registry';
 import { resolveTheme } from '../invoice/themes/resolver';
 import { renderInvoice } from '../invoice/renderer/renderer';
 import { DocumentTheme } from '../invoice/themes/document-theme';
@@ -102,17 +105,6 @@ const T = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const ACCENT_COLORS = [
-  { name: 'Saffron Orange', hex: '#F97316' },
-  { name: 'Modern Blue',    hex: '#2563EB' },
-  { name: 'Royal Navy',     hex: '#1E3A8A' },
-  { name: 'Forest Green',   hex: '#16A34A' },
-  { name: 'Deep Purple',    hex: '#7C3AED' },
-  { name: 'Charcoal',       hex: '#1E293B' },
-  { name: 'Crimson Red',    hex: '#DC2626' },
-  { name: 'Slate',          hex: '#475569' },
-];
-
 const FONTS: { label: string; value: string; sample: string }[] = [
   { label: 'Sans Serif',   value: 'Arial',   sample: 'Aa' },
   { label: 'Inter',        value: 'Inter',   sample: 'Aa' },
@@ -132,7 +124,13 @@ const LOGO_POSITIONS: { label: string; value: string }[] = [
   { label: 'Right',  value: 'right'  },
 ];
 
-const PREVIEW_DATA = {
+// Sample invoice content (items/customer/document number) — a style preview
+// doesn't need a real invoice, just realistic-looking table/GST content.
+// Seller fields below are placeholder fallbacks, overridden with the
+// business's real settings once loaded (see `buildPreviewData` / `business`
+// state) so the preview reflects the user's actual current business instead
+// of a fake company.
+const SAMPLE_DOC_DATA = {
   recordNumber: 'INV-2026-0042',
   recordCreatedAt: '29 June 2026',
   documentTypeName: 'Tax Invoice',
@@ -146,16 +144,21 @@ const PREVIEW_DATA = {
     { label: 'PO Number',     value: 'PO-98765' },
     { label: 'Challan Number', value: 'DC-00352' },
   ],
-  sellerName:          'YourCompany Solutions Ltd',
-  sellerAddress:       '101 Tech Hub, Block 4\nBengaluru, Karnataka - 560001',
-  sellerGstin:         '29AAAAA1111A1Z1',
-  sellerState:         'Karnataka',
-  sellerPhone:         '+91 9876543210',
-  sellerEmail:         'billing@yourcompany.in',
-  sellerUpiId:         'yourcompany@ybl',
-  sellerBankName:      'ICICI Bank Ltd',
-  sellerAccountNumber: '123456789012',
-  sellerIfsc:          'ICIC0001234',
+};
+
+const FALLBACK_SELLER = {
+  sellerName:          'Your Business Name',
+  sellerAddress:       'Add your business address in Settings',
+  sellerGstin:         undefined as string | undefined,
+  sellerState:         undefined as string | undefined,
+  sellerPhone:         undefined as string | undefined,
+  sellerEmail:         undefined as string | undefined,
+  sellerUpiId:         undefined as string | undefined,
+  sellerBankName:      undefined as string | undefined,
+  sellerAccountNumber: undefined as string | undefined,
+  sellerIfsc:          undefined as string | undefined,
+  sellerLogoUri:       undefined as string | undefined,
+  sellerSignatureUri:  undefined as string | undefined,
 };
 
 const BASE_THEME: DocumentTheme = {
@@ -174,97 +177,9 @@ const DEFAULT_PREFS: BusinessPreferences = {
   footerMessage: 'Thank you for your business.',
 };
 
-type Tab = 'presets' | 'appearance' | 'table' | 'branding';
+type Tab = 'appearance' | 'table' | 'branding';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'StyleStudio'>;
-
-// ─── Tiny mini-invoice thumbnail renderer ───────────────────────────────────
-
-function PresetThumbnail({ templateId, accent }: { templateId: string; accent: string }) {
-  const isDark = templateId === 'bold';
-  const bg     = isDark ? '#1F2937' : '#FAFAFA';
-  const line   = isDark ? '#374151' : '#E5E7EB';
-  const muted  = isDark ? '#9CA3AF' : '#94A3B8';
-
-  if (templateId === 'modern') {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg }}>
-        <View style={{ height: 20, backgroundColor: accent, paddingHorizontal: 6, paddingVertical: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontSize: 5, color: '#fff', fontWeight: '700', letterSpacing: 0.5 }}>INVOICE</Text>
-          <Text style={{ fontSize: 4, color: 'rgba(255,255,255,0.7)' }}>#1042</Text>
-        </View>
-        <View style={{ padding: 6 }}>
-          <Text style={{ fontSize: 3.5, color: muted, marginBottom: 2 }}>Total Due</Text>
-          <Text style={{ fontSize: 7, color: isDark ? '#F9FAFB' : '#0F172A', fontWeight: '700', marginBottom: 6 }}>₹29,500</Text>
-          {[1, 2].map(i => (
-            <View key={i} style={{ height: 7, backgroundColor: line, borderRadius: 2, marginBottom: 3 }} />
-          ))}
-        </View>
-      </View>
-    );
-  }
-
-  if (templateId === 'classic') {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg, padding: 6 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
-          <View style={{ width: 16, height: 16, backgroundColor: accent, borderRadius: 3 }} />
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 5, color: accent, fontWeight: '700' }}>TAX INVOICE</Text>
-            <Text style={{ fontSize: 3.5, color: muted, marginTop: 1 }}>INV-2026-0042</Text>
-          </View>
-        </View>
-        <View style={{ height: 1, backgroundColor: line, marginBottom: 5 }} />
-        <View style={{ height: 6, backgroundColor: line, borderRadius: 2, marginBottom: 3 }} />
-        <View style={{ height: 6, backgroundColor: line, borderRadius: 2, width: '70%' }} />
-      </View>
-    );
-  }
-
-  if (templateId === 'minimal') {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg, padding: 8 }}>
-        <Text style={{ fontSize: 6, color: isDark ? '#F1F5F9' : '#0F172A', fontWeight: '300', letterSpacing: 1, marginBottom: 6 }}>INVOICE</Text>
-        <Text style={{ fontSize: 3.5, color: muted, marginBottom: 1 }}>Billed to: Eco Farms Ltd</Text>
-        <Text style={{ fontSize: 3.5, color: muted, marginBottom: 8 }}>29 June 2026</Text>
-        <View style={{ height: 1, backgroundColor: line, marginBottom: 6 }} />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 4, color: muted }}>Total</Text>
-          <Text style={{ fontSize: 5, color: isDark ? '#F9FAFB' : '#0F172A', fontWeight: '600' }}>₹29,500</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (templateId === 'bold') {
-    return (
-      <View style={{ flex: 1, backgroundColor: bg, padding: 6 }}>
-        <View style={{ backgroundColor: accent, alignSelf: 'flex-start', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3, marginBottom: 7 }}>
-          <Text style={{ fontSize: 4.5, color: '#fff', fontWeight: '700' }}>INVOICE</Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          <View style={{ flex: 1, backgroundColor: '#374151', borderRadius: 4, padding: 3 }}>
-            <Text style={{ fontSize: 3, color: '#9CA3AF' }}>Amount</Text>
-            <Text style={{ fontSize: 5, color: '#F9FAFB', fontWeight: '600' }}>₹29.5k</Text>
-          </View>
-          <View style={{ flex: 1, backgroundColor: '#374151', borderRadius: 4, padding: 3 }}>
-            <Text style={{ fontSize: 3, color: '#9CA3AF' }}>Date</Text>
-            <Text style={{ fontSize: 5, color: '#F9FAFB', fontWeight: '600' }}>Jun 29</Text>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  // Fallback
-  return (
-    <View style={{ flex: 1, backgroundColor: bg, padding: 6 }}>
-      <Text style={{ fontSize: 5, color: accent, fontWeight: '700', marginBottom: 4 }}>INVOICE</Text>
-      <View style={{ height: 6, backgroundColor: line, borderRadius: 2, marginBottom: 3 }} />
-      <View style={{ height: 6, backgroundColor: line, borderRadius: 2, width: '60%' }} />
-    </View>
-  );
-}
 
 // ─── Section header ─────────────────────────────────────────────────────────
 
@@ -338,20 +253,28 @@ export function StyleStudioScreen() {
   const [theme,           setTheme]            = useState<Partial<DocumentTheme>>({});
   const [preferences,     setPreferences]      = useState<BusinessPreferences>(DEFAULT_PREFS);
   const [isDirty,         setIsDirty]          = useState(false);
-  const [activeTab,       setActiveTab]        = useState<Tab>('presets');
+  const [activeTab,       setActiveTab]        = useState<Tab>('appearance');
   const [saving,          setSaving]           = useState(false);
   const [aiPrompt,        setAiPrompt]         = useState('');
   const [aiLoading,       setAiLoading]        = useState(false);
   const [aiResult,        setAiResult]         = useState<{ confidence: number; explanation: string } | null>(null);
+  const [business,        setBusiness]         = useState<Awaited<ReturnType<typeof getBusinessSettings>> | null>(null);
+  const [activePresetIndex, setActivePresetIndex] = useState(0);
 
   // ── Sheet geometry ──
-  const SNAP_PEEK    = screenH * 0.28;
-  const SNAP_DEFAULT = screenH * 0.42;
-  const SNAP_FULL    = screenH * 0.88;
+  // FOOTER_H is reserved, fixed space for the tab bar (now a persistent
+  // footer, not part of the draggable sheet — see the JSX below). Snap
+  // fractions are based on the space actually available above it, not raw
+  // screenH, so Full (88%) doesn't try to claim space the footer now owns.
+  const FOOTER_H      = 64 + insets.bottom;
+  const AVAILABLE_H   = screenH - 56 - insets.top - FOOTER_H;
+  const SNAP_PEEK    = AVAILABLE_H * 0.28;
+  const SNAP_DEFAULT = AVAILABLE_H * 0.42;
+  const SNAP_FULL    = AVAILABLE_H * 0.88;
   const snapPoints   = [SNAP_PEEK, SNAP_DEFAULT, SNAP_FULL];
 
-  const sheetH = useSharedValue(SNAP_DEFAULT);
-  const [snapIndex, setSnapIndex] = useState(1); // 0=Peek, 1=Default, 2=Full
+  const sheetH = useSharedValue(SNAP_PEEK);
+  const [snapIndex, setSnapIndex] = useState(0); // 0=Peek, 1=Default, 2=Full — starts minimal, expands on selection
 
   const snapTo = useCallback((idx: number) => {
     const clamped = Math.max(0, Math.min(2, idx));
@@ -390,22 +313,66 @@ export function StyleStudioScreen() {
 
   const sheetStyle   = useAnimatedStyle(() => ({ height: sheetH.value }));
   const previewStyle = useAnimatedStyle(() => ({
-    bottom: sheetH.value,
+    bottom: sheetH.value + FOOTER_H,
     top: 56 + insets.top,
   }));
 
+  // ── Swipe-to-change-template ──
+  // Lives on the preview's own Animated.View (s.previewContainer), which has
+  // no other gesture attached — panGesture above is scoped only to the
+  // sheet's drag handle, so these two never compete for the same touches.
+  const overlayOpacity = useSharedValue(0);
+  let overlayHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const showPresetOverlay = useCallback(() => {
+    overlayOpacity.value = withTiming(1, { duration: 150 });
+    if (overlayHideTimer) clearTimeout(overlayHideTimer);
+    overlayHideTimer = setTimeout(() => {
+      overlayOpacity.value = withTiming(0, { duration: 250 });
+    }, 1200);
+  }, []);
+
+  const goToPreset = useCallback((index: number) => {
+    const wrapped = ((index % PRESETS.length) + PRESETS.length) % PRESETS.length;
+    setActivePresetIndex(wrapped);
+    applyPreset(PRESETS[wrapped]);
+    showPresetOverlay();
+  }, [showPresetOverlay]);
+
+  const SWIPE_THRESHOLD = 50;
+  const previewSwipeGesture = Gesture.Pan()
+    .onEnd(e => {
+      if (Math.abs(e.translationX) <= Math.abs(e.translationY)) return;
+      if (Math.abs(e.translationX) < SWIPE_THRESHOLD) return;
+      const direction = e.translationX < 0 ? 1 : -1; // swipe left → next, right → previous
+      runOnJS(goToPreset)(activePresetIndex + direction);
+    });
+
+  const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOpacity.value }));
+
   // ── Data ──
   useEffect(() => { loadProfile(); }, [documentTypeId]);
+  useEffect(() => { getBusinessSettings().then(setBusiness); }, []);
 
   const loadProfile = async () => {
     setLoading(true);
     try {
       const active = await getActivePrintProfile();
+      const loadedTemplateId = active.templateId || 'classic';
+      const loadedTheme = active.themeOverridesJson ? JSON.parse(active.themeOverridesJson) : {};
       setActiveProfileId(active.id);
-      setTemplateIdState(active.templateId || 'classic');
-      setTheme(active.themeOverridesJson ? JSON.parse(active.themeOverridesJson) : {});
+      setTemplateIdState(loadedTemplateId);
+      setTheme(loadedTheme);
       setPreferences(active.preferencesJson ? JSON.parse(active.preferencesJson) : DEFAULT_PREFS);
       setIsDirty(false);
+
+      // Start swipe cycling from whichever preset matches the loaded style
+      // (falls back to index 0 if the theme was hand-tweaked and doesn't
+      // correspond to any preset).
+      const matchIndex = PRESETS.findIndex(p =>
+        p.templateId === loadedTemplateId && JSON.stringify(p.themeOverrides) === JSON.stringify(loadedTheme)
+      );
+      setActivePresetIndex(matchIndex >= 0 ? matchIndex : 0);
     } catch {
       Alert.alert('Error', 'Could not load style profile.');
     } finally {
@@ -413,14 +380,33 @@ export function StyleStudioScreen() {
     }
   };
 
+  // Sample invoice content + the business's real seller identity (name,
+  // address, GSTIN, logo, etc.) — this is what makes the preview show the
+  // user's *current* business instead of a hardcoded fake company.
+  const previewData = useMemo(() => ({
+    ...SAMPLE_DOC_DATA,
+    sellerName:          business?.name ?? FALLBACK_SELLER.sellerName,
+    sellerAddress:       business?.address ?? FALLBACK_SELLER.sellerAddress,
+    sellerGstin:         business?.gstin ?? FALLBACK_SELLER.sellerGstin,
+    sellerState:         business?.stateName ?? FALLBACK_SELLER.sellerState,
+    sellerPhone:         business?.phone ?? FALLBACK_SELLER.sellerPhone,
+    sellerEmail:         business?.email ?? FALLBACK_SELLER.sellerEmail,
+    sellerUpiId:         business?.upiId ?? FALLBACK_SELLER.sellerUpiId,
+    sellerBankName:      business?.bankName ?? FALLBACK_SELLER.sellerBankName,
+    sellerAccountNumber: business?.accountNumber ?? FALLBACK_SELLER.sellerAccountNumber,
+    sellerIfsc:          business?.ifsc ?? FALLBACK_SELLER.sellerIfsc,
+    sellerLogoUri:       business?.logo ?? FALLBACK_SELLER.sellerLogoUri,
+    sellerSignatureUri:  business?.signature ?? FALLBACK_SELLER.sellerSignatureUri,
+  }), [business]);
+
   // ── Computed preview HTML ──
   const previewHtml = useMemo(() => {
     const template = SYSTEM_TEMPLATES[templateId] || SYSTEM_TEMPLATES['classic'];
     const resolved = resolveTheme(BASE_THEME, theme, preferences, {
       template, locale: 'en-IN', appVersion: '1.0.0', themeVersion: 3,
     });
-    return renderInvoice(template, resolved.theme, PREVIEW_DATA as any);
-  }, [templateId, theme, preferences]);
+    return renderInvoice(template, resolved.theme, previewData as any);
+  }, [templateId, theme, preferences, previewData]);
 
   // ── Mutations ──
   const applyPreset = useCallback((preset: ThemePreset) => {
@@ -429,20 +415,30 @@ export function StyleStudioScreen() {
     setIsDirty(true);
   }, []);
 
+  // Sheet starts Peek (minimal) so the preview gets maximum room; the first
+  // time the user selects/edits anything, it expands to Default so there's
+  // space to see what they're doing without them having to drag it open.
+  const expandFromPeek = useCallback(() => {
+    if (snapIndex === 0) snapTo(1);
+  }, [snapIndex, snapTo]);
+
   const patchStyle = useCallback((patch: Partial<typeof BASE_THEME.style>) => {
     setTheme(prev => ({ ...prev, style: { ...(prev.style || BASE_THEME.style), ...patch } as any }));
     setIsDirty(true);
-  }, []);
+    expandFromPeek();
+  }, [expandFromPeek]);
 
   const patchTable = useCallback((patch: Partial<typeof BASE_THEME.table>) => {
     setTheme(prev => ({ ...prev, table: { ...(prev.table || BASE_THEME.table), ...patch } as any }));
     setIsDirty(true);
-  }, []);
+    expandFromPeek();
+  }, [expandFromPeek]);
 
   const patchPref = useCallback(<K extends keyof BusinessPreferences>(key: K, val: BusinessPreferences[K]) => {
     setPreferences(prev => ({ ...prev, [key]: val }));
     setIsDirty(true);
-  }, []);
+    expandFromPeek();
+  }, [expandFromPeek]);
 
   const handleApplyAiPrompt = async () => {
     const trimmed = aiPrompt.trim();
@@ -493,7 +489,6 @@ export function StyleStudioScreen() {
 
   // ─── Tabs definition ───────────────────────────────────────────────────
   const TABS: { key: Tab; label: string; icon: string }[] = [
-    { key: 'presets',    label: 'Presets',    icon: 'color-wand-outline'  },
     { key: 'appearance', label: 'Appearance', icon: 'options-outline'     },
     { key: 'table',      label: 'Table',      icon: 'grid-outline'        },
     { key: 'branding',   label: 'Branding',   icon: 'storefront-outline'  },
@@ -541,10 +536,34 @@ export function StyleStudioScreen() {
           ) : (
             <HtmlPreview html={previewHtml} style={{ flex: 1 }} />
           )}
+
+          {/*
+            Transparent touch-capturing layer, on top of the WebView/iframe.
+            A WebView (native) or iframe (web) swallows its own touch/pointer
+            events and never lets them bubble to a gesture recognizer that
+            merely wraps it — this is why the swipe gesture had no effect
+            when it was attached to the outer Animated.View above. Sitting
+            an empty, gesture-bound View directly over the preview (after it
+            in paint order, so it's on top) intercepts the swipe before the
+            WebView ever sees it.
+          */}
+          <GestureDetector gesture={previewSwipeGesture}>
+            <Animated.View style={StyleSheet.absoluteFill} />
+          </GestureDetector>
+
+          {/* Swipe feedback: preset name + dot index, fades in/out */}
+          <Animated.View style={[s.presetOverlay, overlayStyle]} pointerEvents="none">
+            <Text style={s.presetOverlayName}>{PRESETS[activePresetIndex]?.name}</Text>
+            <View style={s.presetOverlayDots}>
+              {PRESETS.map((p, i) => (
+                <View key={p.id} style={[s.presetOverlayDot, i === activePresetIndex && s.presetOverlayDotActive]} />
+              ))}
+            </View>
+          </Animated.View>
         </Animated.View>
 
         {/* ── Bottom Sheet ── */}
-        <Animated.View style={[s.sheet, sheetStyle]}>
+        <Animated.View style={[s.sheet, { bottom: FOOTER_H }, sheetStyle]}>
 
           {/* Drag zone — scoped to the handle only, so it doesn't fight the tab bar's touches */}
           <View style={s.sheetHeader}>
@@ -563,32 +582,6 @@ export function StyleStudioScreen() {
                 <Ionicons name={snapIndex === 2 ? 'contract-outline' : 'expand-outline'} size={16} color={T.textSecondary} />
               </TouchableOpacity>
             </View>
-
-            {/* Segmented tab bar */}
-            <View style={s.tabTrack}>
-              {TABS.map(tab => {
-                const active = activeTab === tab.key;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[s.tabSeg, active && s.tabSegActive]}
-                    onPress={() => setActiveTab(tab.key)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={tab.icon as any}
-                      size={16}
-                      color={active ? T.accent : T.textSecondary}
-                    />
-                    {active && (
-                      <Text style={s.tabSegLabelActive} numberOfLines={1}>
-                        {tab.label}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {/* Scrollable content */}
@@ -600,8 +593,8 @@ export function StyleStudioScreen() {
             bottomOffset={24}
           >
 
-            {/* ── PRESETS tab ── */}
-            {activeTab === 'presets' && (
+            {/* ── APPEARANCE tab ── */}
+            {activeTab === 'appearance' && (
               <View>
                 <SectionHeader
                   icon="sparkles"
@@ -641,85 +634,14 @@ export function StyleStudioScreen() {
                 </View>
 
                 <SectionHeader
-                  icon="color-wand-outline"
-                  title="Presets"
-                  subtitle="One-tap professional invoice styles"
-                />
-                <View style={s.presetGrid}>
-                  {PRESETS.map(p => {
-                    const accent     = (p.themeOverrides as any)?.style?.accentColor || T.accent;
-                    const isSelected = templateId === p.templateId &&
-                      JSON.stringify(theme) === JSON.stringify(p.themeOverrides);
-
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[s.presetCard, isSelected && s.presetCardActive]}
-                        onPress={() => applyPreset(p)}
-                        activeOpacity={0.75}
-                      >
-                        {/* Selection badge */}
-                        {isSelected && (
-                          <View style={s.presetCheck}>
-                            <Ionicons name="checkmark" size={10} color="#fff" />
-                          </View>
-                        )}
-
-                        {/* Thumbnail */}
-                        <View style={[s.presetThumb, isSelected && { borderColor: T.accent }]}>
-                          <PresetThumbnail templateId={p.templateId} accent={accent} />
-                        </View>
-
-                        {/* Meta */}
-                        <Text style={[s.presetName, isSelected && { color: T.accent }]}>
-                          {p.name}
-                        </Text>
-                        <Text style={s.presetDesc} numberOfLines={2}>{p.description}</Text>
-
-                        {/* Style chip */}
-                        <View style={[s.styleChip, { backgroundColor: accent + '18' }]}>
-                          <Text style={[s.styleChipText, { color: accent }]}>
-                            {p.templateId.charAt(0).toUpperCase() + p.templateId.slice(1)}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* ── APPEARANCE tab ── */}
-            {activeTab === 'appearance' && (
-              <View>
-                <SectionHeader
                   icon="color-palette-outline"
                   title="Appearance"
                   subtitle="Brand color and typography"
                 />
 
-                {/* Accent colors */}
+                {/* Accent color */}
                 <GroupCard label="Brand Color">
-                <View style={s.colorRow}>
-                  {ACCENT_COLORS.map(c => {
-                    const active = currentAccent === c.hex;
-                    return (
-                      <TouchableOpacity
-                        key={c.hex}
-                        style={s.colorItem}
-                        onPress={() => patchStyle({ accentColor: c.hex })}
-                        activeOpacity={0.8}
-                      >
-                        <View style={[s.colorSwatch, { backgroundColor: c.hex }, active && s.colorSwatchActive]}>
-                          {active && <Ionicons name="checkmark" size={16} color="#fff" />}
-                        </View>
-                        <Text style={[s.colorName, active && { color: T.textPrimary, fontWeight: '700' }]} numberOfLines={1}>
-                          {c.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                  <ColorPickerPanel value={currentAccent} onChange={hex => patchStyle({ accentColor: hex })} />
                 </GroupCard>
 
                 {/* Fonts */}
@@ -919,6 +841,39 @@ export function StyleStudioScreen() {
           </KeyboardAwareScrollView>
         </Animated.View>
 
+        {/*
+          ── Footer tab bar ──
+          Fixed, always visible regardless of sheet position (rendered after
+          the sheet, so it paints on top if the sheet is dragged toward Full
+          and would otherwise reach the bottom edge). No shared "track" card
+          wrapping all three items — only the active tab gets a pill
+          highlight, the rest float flat, per the reference design.
+        */}
+        <View style={[s.footer, { height: FOOTER_H, paddingBottom: insets.bottom }]}>
+          {TABS.map(tab => {
+            const active = activeTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[s.footerTab, active && s.footerTabActive]}
+                onPress={() => { setActiveTab(tab.key); expandFromPeek(); }}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={tab.icon as any}
+                  size={16}
+                  color={active ? T.accent : T.textSecondary}
+                />
+                {active && (
+                  <Text style={s.footerTabLabelActive} numberOfLines={1}>
+                    {tab.label}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -1015,7 +970,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
+    // bottom is set inline (FOOTER_H) — depends on runtime safe-area insets
     backgroundColor: T.surface,
     borderTopLeftRadius: T.r28,
     borderTopRightRadius: T.r28,
@@ -1053,30 +1008,34 @@ const s = StyleSheet.create({
     marginRight: T.sp16,
   },
 
-  // Segmented tab bar
-  tabTrack: {
+  // Fixed footer tab bar — flat, no shared "track" wrapper; only the
+  // active item gets its own pill highlight.
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
-    marginHorizontal: T.sp16,
-    marginBottom: T.sp12,
-    backgroundColor: T.bg,
-    borderRadius: T.r12,
-    padding: 3,
-    gap: 2,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: T.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: T.border,
+    paddingHorizontal: T.sp16,
   },
-  tabSeg: {
-    flex: 1,
-    height: 38,
-    borderRadius: T.r10,
+  footerTab: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    height: 38,
+    paddingHorizontal: T.sp12,
+    borderRadius: T.r12,
   },
-  tabSegActive: {
-    backgroundColor: T.surface,
-    ...cardShadow('#0F172A', 1, 0.08, 3, { elevation: 2 }),
+  footerTabActive: {
+    backgroundColor: T.bg,
   },
-  tabSegLabelActive: {
+  footerTabLabelActive: {
     fontSize: T.fs13,
     fontWeight: '700',
     color: T.accent,
@@ -1189,101 +1148,37 @@ const s = StyleSheet.create({
     marginBottom: T.sp8,
   },
 
-  // Preset grid
-  presetGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: T.sp12,
-    justifyContent: 'space-between',
-  },
-  presetCard: {
-    width: '48%',
-    borderRadius: T.r14,
-    backgroundColor: T.bg,
-    padding: T.sp12,
-    borderWidth: 1,
-    borderColor: T.border,
-    marginBottom: T.sp4,
-    position: 'relative',
-  },
-  presetCardActive: {
-    borderColor: T.accent,
-    backgroundColor: T.accentLight,
-  },
-  presetCheck: {
+  // Swipe-to-change-template feedback overlay
+  presetOverlay: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 20,
-    height: 20,
-    borderRadius: T.r99,
-    backgroundColor: T.accent,
+    top: 16,
+    alignSelf: 'center',
     alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  presetThumb: {
-    height: 84,
-    borderRadius: T.r10,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: T.border,
-    marginBottom: T.sp8,
-    backgroundColor: '#FAFAFA',
-  },
-  presetName: {
-    fontSize: T.fs14,
-    fontWeight: '700',
-    color: T.textPrimary,
-    marginBottom: 3,
-  },
-  presetDesc: {
-    fontSize: T.fs13,
-    lineHeight: 18,
-    color: T.textSecondary,
-    marginBottom: T.sp8,
-  },
-  styleChip: {
-    alignSelf: 'flex-start',
-    height: 22,
+    backgroundColor: 'rgba(17,24,39,0.85)',
     borderRadius: T.r99,
-    paddingHorizontal: T.sp8,
-    justifyContent: 'center',
+    paddingHorizontal: T.sp16,
+    paddingVertical: T.sp8,
+    gap: 6,
   },
-  styleChipText: {
-    fontSize: T.fs11,
-    fontWeight: '600',
+  presetOverlayName: {
+    fontSize: T.fs13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  presetOverlayDots: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  presetOverlayDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  presetOverlayDotActive: {
+    backgroundColor: '#fff',
   },
 
-  colorRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: T.sp12,
-    marginBottom: T.sp4,
-  },
-  colorItem: {
-    width: '22%',
-    alignItems: 'center',
-  },
-  colorSwatch: {
-    width: 48,
-    height: 48,
-    borderRadius: T.r99,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-    marginBottom: T.sp4,
-  },
-  colorSwatchActive: {
-    borderColor: T.textPrimary,
-    ...cardShadow(T.textPrimary, 0, 0.25, 4, { elevation: 3 }),
-  },
-  colorName: {
-    fontSize: 10,
-    color: T.textSecondary,
-    textAlign: 'center',
-  },
   fontRow: {
     flexDirection: 'row',
     gap: T.sp8,
