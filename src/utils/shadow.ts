@@ -21,3 +21,14 @@ export function cardShadow(
     elevation,
   };
 }
+
+/**
+ * ADR-UI-001 shadow tiers: none/low/medium, built on cardShadow() so every
+ * screen pulls from the same three presets instead of inventing its own
+ * offset/opacity/radius numbers per call site.
+ */
+export const shadowLevel = {
+  none: undefined,
+  low: cardShadow('#000', 1, 0.05, 8, { elevation: 1 }),
+  medium: cardShadow('#000', 4, 0.10, 16, { elevation: 4 }),
+} as const;
