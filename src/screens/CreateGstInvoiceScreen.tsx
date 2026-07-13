@@ -4,6 +4,7 @@ import {
   ScrollView, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { TextInput as PaperTextInput, Chip } from 'react-native-paper';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,7 +19,11 @@ import { Customer } from '../types';
 import { formatCurrency, formatDate } from '../services/formatService';
 import { KeyboardAwareScreen } from '../components/keyboard/KeyboardAwareScreen';
 import { StickyBottomActionBar } from '../components/keyboard/StickyBottomActionBar';
+import { KeyboardAwareBottomSheet } from '../components/keyboard/KeyboardAwareBottomSheet';
 import { fieldKeyboardProps } from '../components/keyboard/fieldKeyboard';
+import { ItemNameAutocompleteField } from '../components/ItemNameAutocompleteField';
+import { ItemHistoryEntry, recordItemUsage, getRecentUnits } from '../services/itemHistoryService';
+import { COMMON_UNITS } from '../constants';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,6 +197,9 @@ export function CreateGstInvoiceScreen() {
   const [editIdx,        setEditIdx]       = useState<number | null>(null);
   const [draft,          setDraft]         = useState<GstItem>(emptyItem());
   const [draftExpanded,  setDraftExpanded] = useState(false);
+  const [recentUnits,    setRecentUnits]   = useState<string[]>([]);
+  const [customUnitMode, setCustomUnitMode] = useState(false);
+  const [unitMenuOpen,   setUnitMenuOpen]  = useState(false);
 
   // ── GST card
   const [gstExpanded,     setGstExpanded]     = useState(false);
@@ -249,15 +257,19 @@ export function CreateGstInvoiceScreen() {
   const openAddItem = () => {
     setDraft(emptyItem());
     setDraftExpanded(false);
+    setCustomUnitMode(false);
     setEditIdx(null);
     setItemModal(true);
+    if (business?.id) getRecentUnits(business.id).then(setRecentUnits);
   };
 
   const openEditItem = (idx: number) => {
     setDraft({ ...items[idx] });
     setDraftExpanded(false);
+    setCustomUnitMode(!COMMON_UNITS.includes(items[idx].unit) && !recentUnits.includes(items[idx].unit));
     setEditIdx(idx);
     setItemModal(true);
+    if (business?.id) getRecentUnits(business.id).then(setRecentUnits);
   };
 
   const saveItem = () => {
@@ -268,6 +280,23 @@ export function CreateGstInvoiceScreen() {
       setItems(prev => [...prev, draft]);
     }
     setItemModal(false);
+    if (business?.id) {
+      recordItemUsage(business.id, {
+        name: draft.name, unit: draft.unit, rate: draft.price, gstPct: draft.gstPct, hsn: draft.hsn,
+      });
+    }
+  };
+
+  const selectItemSuggestion = (entry: ItemHistoryEntry) => {
+    setDraft(prev => ({
+      ...prev,
+      name: entry.name,
+      unit: entry.lastUnit ?? prev.unit,
+      price: entry.lastRate ?? prev.price,
+      gstPct: entry.lastGstPct ?? prev.gstPct,
+      hsn: entry.lastHsn ?? prev.hsn,
+    }));
+    setCustomUnitMode(!!entry.lastUnit && !COMMON_UNITS.includes(entry.lastUnit) && !recentUnits.includes(entry.lastUnit));
   };
 
   const deleteItem = (idx: number) => {
@@ -597,72 +626,109 @@ export function CreateGstInvoiceScreen() {
       </StickyBottomActionBar>
 
       {/* ── Add / Edit Item Modal ── */}
-      <Modal visible={itemModal} transparent animationType="slide" onRequestClose={() => setItemModal(false)}>
-        <View style={S.modalOverlay}>
-          <TouchableOpacity style={S.modalBg} activeOpacity={1} onPress={() => setItemModal(false)} />
-          <View style={S.bottomSheet}>
-            <View style={S.sheetHandle} />
-            <Text style={S.sheetTitle}>{editIdx !== null ? 'Edit Item' : 'Add Item'}</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <Text style={S.fieldLabel}>Item Name *</Text>
-              <TextInput
-                style={[S.input, { marginBottom: 14 }]}
+      <KeyboardAwareBottomSheet
+        visible={itemModal}
+        onClose={() => setItemModal(false)}
+        title={editIdx !== null ? 'Edit Item' : 'Add Item'}
+        sheetStyle={S.bottomSheet}
+        titleStyle={S.sheetTitle}
+        footer={
+          <TouchableOpacity style={S.sheetSaveBtn} onPress={saveItem} activeOpacity={0.85}>
+            <Text style={S.sheetSaveBtnText}>{editIdx !== null ? 'Update Item' : 'Add to Invoice'}</Text>
+          </TouchableOpacity>
+        }
+      >
+              <ItemNameAutocompleteField
+                label="Item Name *"
+                style={{ marginBottom: 14 }}
                 value={draft.name}
                 onChangeText={v => setDraftField('name', v)}
+                onSelectItem={selectItemSuggestion}
                 placeholder="Rice, Wheat flour, Labour charges…"
-                placeholderTextColor={C.muted}
                 autoFocus
               />
               <View style={S.draftRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={S.fieldLabel}>Qty</Text>
-                  <TextInput
-                    style={S.input}
+                  <PaperTextInput
+                    mode="outlined"
+                    label="Qty"
                     value={String(draft.qty)}
                     onChangeText={v => setDraftField('qty', parseFloat(v) || 0)}
                     {...fieldKeyboardProps('decimal')}
-                    placeholderTextColor={C.muted}
                   />
                 </View>
                 <View style={{ width: 12 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={S.fieldLabel}>Unit</Text>
-                  <TextInput
-                    style={S.input}
-                    value={draft.unit}
-                    onChangeText={v => setDraftField('unit', v.toUpperCase())}
-                    placeholder="NOS"
-                    placeholderTextColor={C.muted}
-                    autoCapitalize="characters"
-                  />
+                <View style={{ flex: 1, zIndex: 5 }}>
+                  <TouchableOpacity onPress={() => { setCustomUnitMode(false); setUnitMenuOpen(v => !v); }} activeOpacity={0.75}>
+                    <PaperTextInput
+                      mode="outlined"
+                      label="Unit"
+                      value={draft.unit}
+                      editable={false}
+                      right={<PaperTextInput.Icon icon={unitMenuOpen ? 'menu-up' : 'menu-down'} onPress={() => { setCustomUnitMode(false); setUnitMenuOpen(v => !v); }} />}
+                      pointerEvents="none"
+                    />
+                  </TouchableOpacity>
+                  {unitMenuOpen && (
+                    <View style={S.unitDropdown}>
+                      <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
+                        {[...new Set([...recentUnits, ...COMMON_UNITS])].map(u => (
+                          <TouchableOpacity
+                            key={u}
+                            style={S.unitDropdownRow}
+                            activeOpacity={0.7}
+                            onPress={() => { setDraftField('unit', u); setUnitMenuOpen(false); }}
+                          >
+                            <Text style={S.unitDropdownText}>{u}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                          style={S.unitDropdownRow}
+                          activeOpacity={0.7}
+                          onPress={() => { setCustomUnitMode(true); setUnitMenuOpen(false); }}
+                        >
+                          <Text style={[S.unitDropdownText, { color: C.orange, fontWeight: '600' }]}>Custom…</Text>
+                        </TouchableOpacity>
+                      </ScrollView>
+                    </View>
+                  )}
+                  {customUnitMode && (
+                    <PaperTextInput
+                      mode="outlined"
+                      label="Custom unit"
+                      value={draft.unit}
+                      onChangeText={v => setDraftField('unit', v.toUpperCase())}
+                      placeholder="NOS"
+                      autoCapitalize="characters"
+                      autoFocus
+                      style={{ marginTop: 8 }}
+                    />
+                  )}
                 </View>
                 <View style={{ width: 12 }} />
                 <View style={{ flex: 1.5 }}>
-                  <Text style={S.fieldLabel}>Rate ₹</Text>
-                  <TextInput
-                    style={S.input}
+                  <PaperTextInput
+                    mode="outlined"
+                    label="Rate ₹"
                     value={String(draft.price)}
                     onChangeText={v => setDraftField('price', parseFloat(v) || 0)}
                     {...fieldKeyboardProps('decimal')}
-                    placeholderTextColor={C.muted}
                   />
                 </View>
               </View>
 
               {/* GST% chips */}
-              <Text style={[S.fieldLabel, { marginTop: 14 }]}>GST Rate</Text>
+              <Text style={[S.fieldLabel, { marginTop: 14, marginBottom: 8 }]}>GST Rate</Text>
               <View style={S.rateChips}>
                 {GST_RATES.map(r => (
-                  <TouchableOpacity
+                  <Chip
                     key={r}
-                    style={[S.rateChip, draft.gstPct === r && S.rateChipActive]}
+                    mode={draft.gstPct === r ? 'flat' : 'outlined'}
+                    selected={draft.gstPct === r}
                     onPress={() => setDraftField('gstPct', r)}
-                    activeOpacity={0.75}
                   >
-                    <Text style={[S.rateChipText, draft.gstPct === r && S.rateChipTextActive]}>
-                      {r === 0 ? 'Nil' : `${r}%`}
-                    </Text>
-                  </TouchableOpacity>
+                    {r === 0 ? 'Nil' : `${r}%`}
+                  </Chip>
                 ))}
               </View>
 
@@ -678,26 +744,24 @@ export function CreateGstInvoiceScreen() {
               {draftExpanded && (
                 <View style={S.draftRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={S.fieldLabel}>HSN / SAC</Text>
-                    <TextInput
-                      style={S.input}
+                    <PaperTextInput
+                      mode="outlined"
+                      label="HSN / SAC"
                       value={draft.hsn}
                       onChangeText={v => setDraftField('hsn', v)}
                       placeholder="1006"
                       {...fieldKeyboardProps('number')}
-                      placeholderTextColor={C.muted}
                     />
                   </View>
                   <View style={{ width: 12 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={S.fieldLabel}>Discount ₹</Text>
-                    <TextInput
-                      style={S.input}
+                    <PaperTextInput
+                      mode="outlined"
+                      label="Discount ₹"
                       value={draft.discount ? String(draft.discount) : ''}
                       onChangeText={v => setDraftField('discount', parseFloat(v) || 0)}
                       placeholder="0"
                       {...fieldKeyboardProps('decimal')}
-                      placeholderTextColor={C.muted}
                     />
                   </View>
                 </View>
@@ -715,15 +779,8 @@ export function CreateGstInvoiceScreen() {
                   )}
                 </View>
               )}
-
-              <TouchableOpacity style={S.sheetSaveBtn} onPress={saveItem} activeOpacity={0.85}>
-                <Text style={S.sheetSaveBtnText}>{editIdx !== null ? 'Update Item' : 'Add to Invoice'}</Text>
-              </TouchableOpacity>
-              <View style={{ height: 20 }} />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+              <View style={{ height: 12 }} />
+      </KeyboardAwareBottomSheet>
 
       {/* ── Customer State picker ── */}
       <Modal visible={stateModal} transparent animationType="slide" onRequestClose={() => setStateModal(false)}>
@@ -904,6 +961,13 @@ const S = StyleSheet.create({
   // Field rows
   fieldRow:  { gap: 6 },
   fieldLabel: { fontSize: 11, fontWeight: '600', color: C.sub, textTransform: 'uppercase', letterSpacing: 0.4 },
+  unitDropdown: {
+    position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 10,
+    backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: C.border, overflow: 'hidden',
+    ...cardShadow('#000', 4, 0.12, 12, { elevation: 6 }),
+  },
+  unitDropdownRow: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  unitDropdownText: { fontSize: 14, color: C.dark },
   input: {
     fontSize: 15, color: C.dark,
     borderWidth: 1, borderColor: C.border, borderRadius: 12,
@@ -969,7 +1033,7 @@ const S = StyleSheet.create({
   generateBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 
   // Item modal
-  draftRow:       { flexDirection: 'row', alignItems: 'flex-end' },
+  draftRow:       { flexDirection: 'row', alignItems: 'flex-end', zIndex: 10, elevation: 10 },
   rateChips:      { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 4 },
   rateChip:       { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.bg },
   rateChipActive: { borderColor: C.orange, backgroundColor: `${C.orange}12` },
@@ -985,7 +1049,7 @@ const S = StyleSheet.create({
   linePreviewValue: { fontSize: 24, fontWeight: '800', color: C.dark, marginTop: 2 },
   linePreviewSub:   { fontSize: 12, color: C.sub, marginTop: 4 },
   sheetSaveBtn: {
-    backgroundColor: C.orange, borderRadius: 14, height: 52,
+    backgroundColor: C.orange, borderRadius: 14, height: 56,
     alignItems: 'center', justifyContent: 'center', marginTop: 16,
   },
   sheetSaveBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },

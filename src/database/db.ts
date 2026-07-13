@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DB_NAME = 'rera_v2.db';
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -48,6 +48,35 @@ export async function initDatabase(): Promise<void> {
   if (current < 9) await migration9(database);
   if (current < 10) await migration10(database);
   if (current < 11) await migration11(database);
+  if (current < 12) await migration12(database);
+}
+
+// ─── Migration 12 — Add item_history: lightweight "item memory" so Add Item
+// can recall previously typed line items (name/unit/rate/GST/HSN) without a
+// Product Master. One row per distinct item name per business, upserted on
+// every use — not a log table.
+
+async function migration12(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS item_history (
+      id            TEXT PRIMARY KEY,
+      business_id   TEXT NOT NULL REFERENCES businesses(id),
+      name          TEXT NOT NULL,
+      last_unit     TEXT,
+      last_rate     REAL,
+      last_gst_pct  REAL,
+      last_hsn      TEXT,
+      times_used    INTEGER NOT NULL DEFAULT 1,
+      last_used_at  TEXT NOT NULL,
+      created_at    TEXT NOT NULL,
+      UNIQUE (business_id, name COLLATE NOCASE)
+    );
+  `);
+
+  await db.runAsync(
+    `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+    [12, new Date().toISOString()]
+  );
 }
 
 // ─── Migration 11 — Rename stale 'Vendor Name'/'Paid To' counterparty fields

@@ -147,6 +147,13 @@ export const TEMPLATES_BY_DOCUMENT_TYPE: Record<string, string[]> = {
   'site visit report':    ['site_inspection'],
 };
 
+// Common units offered in Add Item's unit chip row, ahead of a "Custom…" free-text
+// fallback. No inventory/unit-master required — see item_history for recall of
+// units the business has actually used before.
+export const COMMON_UNITS: string[] = [
+  'Piece', 'Kg', 'Gram', 'Litre', 'ml', 'Box', 'Packet', 'Dozen', 'Hour', 'Day', 'Meter', 'Sq Ft',
+];
+
 export const FIELD_TYPE_LABELS: Record<string, string> = {
   text:      'Text',
   number:    'Number',
@@ -381,3 +388,10 @@ export function getLocalFieldSuggestions(name: string): { fields: string[]; scor
 
 export { LOCAL_THRESHOLD };
 export * from './design';
+
+// ADR-UI-001 Foundation tokens (spacing/color/typography/icon/radius/touch/motion
+// scales) — the new app-wide standard, superseding both COLORS/MD3 above and
+// the colors/spacing/radius/typography tokens in ./design (still used by
+// DocIcon.tsx; left as-is until migrated). Import directly from
+// '../theme/tokens' / '../theme/componentSizes' — not re-exported here since
+// several names (colors, spacing, radius, typography) collide with ./design.
