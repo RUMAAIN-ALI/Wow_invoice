@@ -72,7 +72,7 @@ ${theme.showGstin && data.sellerGstin ? `
 <div class="gstin-band">
   <span class="gstin-label">GSTIN</span>
   <span class="gstin-value">${esc(data.sellerGstin)}</span>
-  ${data.sellerState ? `<span class="gstin-state">Place of Supply: ${esc(data.sellerState)}</span>` : ''}
+  ${data.customerState ? `<span class="gstin-state">Place of Supply: ${esc(data.customerState)}</span>` : ''}
 </div>` : ''}
 ${billToSection}
 `;
@@ -113,11 +113,11 @@ ${logoBlock}
     <div class="docdt">${fmtDate(data.recordCreatedAt, theme.dateFormat)}</div>
   </div>
 </div>
-${templateId === 'gst_formal' && theme.showGstin && data.sellerGstin && data.sellerState ? `
+${templateId === 'gst_formal' && theme.showGstin && data.sellerGstin && data.customerState ? `
 <div class="gstin-band">
   <span class="gstin-label">GSTIN</span>
   <span class="gstin-value">${esc(data.sellerGstin)}</span>
-  <span class="gstin-state">Place of Supply: ${esc(data.sellerState)}</span>
+  <span class="gstin-state">Place of Supply: ${esc(data.customerState)}</span>
 </div>` : ''}
 ${billToSection}
 `;
